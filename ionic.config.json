@@ -1,0 +1,7 @@
+{
+  "name": "ionic-net-mesh-simulator",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "vue"
+}
