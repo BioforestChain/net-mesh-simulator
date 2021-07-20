@@ -10,7 +10,10 @@ declare namespace BM {
     /**添加一个节点 */
     addConntectedPoint(point: Point): PromiseMaybe<boolean>;
     /**开始矩阵广播 */
-    startMartixBroadcast(target: Point): PromiseMaybe<MartixBroadcast>;
+    startMartixBroadcast(
+      target: Point,
+      data: string
+    ): PromiseMaybe<MartixBroadcast>;
   }
   /**矩阵广播 */
   interface MartixBroadcast {

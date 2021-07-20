@@ -1,23 +1,30 @@
 import "./@types";
 import { Evt } from "./evt";
-class Point implements BM.Point {
+export class Point implements BM.Point {
   constructor(
     public readonly x: number,
     public readonly y: number,
-    /* 默认是16位，也就是说x与y的范围是 [0~2**16) */
-    public readonly radix = 16
-  ) {}
+    /* 正方形的变长 */
+    public readonly edgeSize: number
+  ) {
+    this.onData.on((data) => {
+      this.ownDatas.add(data);
+    });
+  }
+  readonly onData = new Evt<string>();
+  readonly ownDatas = new Set<string>();
+
   private _bi?: bigint;
   toBigInt() {
     if (this._bi === undefined) {
-      this._bi = (BigInt(this.x) << BigInt(this.radix)) + BigInt(this.y);
+      this._bi = BigInt(this.y) * BigInt(this.edgeSize) + BigInt(this.x);
     }
     return this._bi;
   }
   private _n?: number;
   toNumber() {
     if (this._n === undefined) {
-      this._n = (this.x << this.radix) + this.y;
+      this._n = this.y * this.edgeSize + this.x;
     }
     return this._n;
   }
@@ -27,8 +34,8 @@ class Point implements BM.Point {
   calcDistance(point: BM.Point) {
     return Math.sqrt(this.calcDistancePow2(point));
   }
-  toPointVector(toPoint: BM.Point) {
-    return new Vector(toPoint.x - this.x, toPoint.y - this.y, this.radix);
+  makeVector(toPoint: BM.Point) {
+    return new Vector(toPoint.x - this.x, toPoint.y - this.y, this.edgeSize);
   }
   /**
    *
@@ -36,10 +43,9 @@ class Point implements BM.Point {
    * @returns
    */
   min(OPEN_MAX: number) {
-    const CUR_MAX = 2 ** this.radix;
     return {
-      x: Math.floor((this.x / CUR_MAX) * OPEN_MAX),
-      y: Math.floor((this.y / CUR_MAX) * OPEN_MAX),
+      x: Math.floor((this.x / this.edgeSize) * OPEN_MAX),
+      y: Math.floor((this.y / this.edgeSize) * OPEN_MAX),
     };
   }
   minPoint(OPEN_MAX: number, radix: number) {
@@ -66,7 +72,7 @@ class Vector extends Point {
   }
 }
 
-class BroadcastMatrix implements BM.BroadcastMatrix {
+export class BroadcastMatrix implements BM.BroadcastMatrix {
   public readonly connectedPoints = new Map<bigint, Point>();
   constructor(public readonly startPoint: Point) {}
   addConntectedPoint(cpoint: Point) {
@@ -82,8 +88,8 @@ class BroadcastMatrix implements BM.BroadcastMatrix {
    * 开始一个广播任务
    * @param targetPoint 方向目标
    */
-  startMartixBroadcast(direction: Point, taskId?: string) {
-    return new MatrixBroadcast(this, direction, taskId);
+  startMartixBroadcast(direction: Point, data: string) {
+    return new MatrixBroadcast(this, direction, data);
   }
   //   removeConntectedPoint(cpoint:)
 }
@@ -120,17 +126,17 @@ type MinPointDetail = {
   minAngle: number;
 };
 
-class MatrixBroadcast implements BM.MartixBroadcast {
+export class MatrixBroadcast implements BM.MartixBroadcast {
   public readonly gridRadix: number = 6;
   public readonly gridSize: number = 1 << this.gridRadix;
   constructor(
     private _martix: BroadcastMatrix,
     public readonly endPoint: Point,
-    public taskId?: string
+    public data: string
   ) {
     const startPoint = this._martix.startPoint;
     const { gridSize, gridRadix } = this;
-    const directionVector = startPoint.toPointVector(endPoint);
+    const directionVector = startPoint.makeVector(endPoint);
 
     /// 排序后构建成一个有序的数组
     const allPointDetailList: PointDetail[] = [];
@@ -151,7 +157,7 @@ class MatrixBroadcast implements BM.MartixBroadcast {
         point.calcDistancePow2(startPoint) +
           point.calcDistancePow2(this.endPoint)
       );
-      const vectorA = startPoint.toPointVector(point);
+      const vectorA = startPoint.makeVector(point);
       const angle = vectorA.calcAngle(directionVector);
 
       const minPoint = point.minPoint(gridSize, gridRadix);
@@ -195,13 +201,13 @@ class MatrixBroadcast implements BM.MartixBroadcast {
     const allMinPointDetailList: MinPointDetail[] = [];
     const endMinPoint = endPoint.minPoint(gridSize, gridRadix);
     const startMinPoint = startPoint.minPoint(gridSize, gridRadix);
-    const minDirectionVector = startMinPoint.toPointVector(endMinPoint);
+    const minDirectionVector = startMinPoint.makeVector(endMinPoint);
     for (const minPoint of allMinPointList) {
       const minDistance = Math.sqrt(
         minPoint.calcDistancePow2(startPoint) +
           minPoint.calcDistancePow2(this.endPoint)
       );
-      const minVectorA = startMinPoint.toPointVector(minPoint);
+      const minVectorA = startMinPoint.makeVector(minPoint);
       const minAngle = minVectorA.calcAngle(minDirectionVector);
       allMinPointDetailList.push({
         minPoint,
@@ -235,6 +241,13 @@ class MatrixBroadcast implements BM.MartixBroadcast {
   private allMinPointDetailMap: ReadonlyMap<number, MinPointDetail>;
   private todoTasks: ReadonlyMap<MinPointDetail, ReadonlySet<PointDetail>>;
   private resolvedPointIds = new Map<number, Set<bigint>>();
+  private _hasResolved(pointDetail: PointDetail) {
+    const pointDetails = this.resolvedPointIds.get(pointDetail.minPointId);
+    if (pointDetails) {
+      return pointDetails.has(pointDetail.pointId);
+    }
+    return false;
+  }
   private rejectedPointIds = new Set<bigint>();
   resolvePoint(point: Point) {
     const pointDetail = this._getPointDetailByPointId(point.toBigInt());
@@ -305,11 +318,7 @@ class MatrixBroadcast implements BM.MartixBroadcast {
           }
         }
         for (const pointDetail of sortedPointDetails) {
-          if (
-            this.resolvedPointIds
-              .get(pointDetail.minPointId)
-              ?.has(pointDetail.pointId)
-          ) {
+          if (this._hasResolved(pointDetail)) {
             /// 如果已经收到这个格子的广播，那么跳过距离小于等于且方向大于等于这个格子的其它格子
             skipedMinPointDetail = minPointDetail;
             this.onSkipMinPointId.emit(minPointDetail.minPointId);
@@ -327,11 +336,8 @@ class MatrixBroadcast implements BM.MartixBroadcast {
           if (i === 0) {
             continue;
           }
-          if (
-            this.resolvedPointIds
-              .get(pointDetail.minPointId)
-              ?.has(pointDetail.pointId)
-          ) {
+          i++;
+          if (this._hasResolved(pointDetail)) {
             continue;
           }
           yield pointDetail.point;
