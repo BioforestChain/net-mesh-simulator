@@ -24,6 +24,9 @@ import * as convert from "color-convert";
 import * as colorString from "color-string";
 import { PeerContainer, PeerContainerArray } from "./PeerContainer";
 import { MatrixBroadcast, Point } from "@/matrix/ripple";
+import { countClassNamePrefix } from "./const";
+import { cacheGetter } from "@bfchain/util-decorator";
+import { DebugView } from "./DebugView";
 
 type $MatrixGenerateOptions = {
   edgeSize: number;
@@ -62,6 +65,9 @@ class ViewBound {
   p2pPath(target: ViewBound) {
     return `M ${this.centerX} ${this.centerY} L ${target.centerX} ${target.centerY}`;
   }
+  get centerXY() {
+    return [this.centerX, this.centerY] as const;
+  }
 }
 
 export class ViewPeer {
@@ -99,10 +105,16 @@ function randomArray<T>(arr: T[], chaos = Math.sqrt(arr.length)) {
   return arr;
 }
 const logicData = {
-  allPeerContainerList: undefined as PeerContainerArray | undefined,
+  canvasCtrl: undefined as
+    | {
+        allPc: PeerContainerArray;
+        debugView: DebugView;
+      }
+    | undefined,
   currentBoardcastTask: undefined as
     | {
         boardcastMap: Map<PeerContainer, MatrixBroadcast>;
+        finishedPc: Set<PeerContainer>;
         stepCount: number;
       }
     | undefined,
@@ -142,6 +154,7 @@ export default defineComponent({
       },
       boardcastReady: false,
       boardcastStepCount: 0,
+      boardcastDone: false,
     };
   },
   created() {
@@ -319,20 +332,22 @@ export default defineComponent({
         HOVER_FILL: 0xffffff,
 
         ALPHA: 0.2,
-        HOVER_ALPHA: 0.3,
+        HOVER_ALPHA: 0.5,
       };
 
       const peerGroup = new Group(2, false);
       const meshGroup = new Group(1, false);
       const topMeshGroup = new Group(4, false);
       const topPeerGroup = new Group(3, false);
+      const debugGroup = new Group(6, false);
       rootContainer.sortableChildren = true;
       rootContainer.addChild(new Layer(peerGroup));
       rootContainer.addChild(new Layer(meshGroup));
       rootContainer.addChild(new Layer(topMeshGroup));
       rootContainer.addChild(new Layer(topPeerGroup));
+      rootContainer.addChild(new Layer(debugGroup));
 
-      const allPeerContainerList = (logicData.allPeerContainerList = new PeerContainerArray());
+      const allPeerContainerList = new PeerContainerArray();
       const peerContainerOpts = {
         allPeerContainerList,
         PEER_VIEW_FILL,
@@ -346,26 +361,37 @@ export default defineComponent({
         const peerContainer = new PeerContainer(peer, peerContainerOpts);
         rootContainer.addChild(peerContainer);
       }
-      console.log(PIXI.settings.TARGET_FPMS);
+      const debugView = new DebugView(app.ticker);
+      debugView.parentGroup = debugGroup;
+      rootContainer.addChild(debugView);
+
       // app.ticker.minFPS = 0;
-      // app.ticker.maxFPS = 30;
-      console.log((performance.now() - _st).toFixed(4) + "ms");
+      app.ticker.maxFPS = 30;
+      console.log(
+        PIXI.settings.TARGET_FPMS,
+        (performance.now() - _st).toFixed(4) + "ms"
+      );
+
+      logicData.canvasCtrl = {
+        allPc: allPeerContainerList,
+        debugView,
+      };
     },
     generateNetMeshAndReander() {
       this.generateNetMesh();
       this.canvasRender(this.$refs.canvas as HTMLCanvasElement);
     },
     prepareBroadcast() {
-      const allPeerContainerList = logicData.allPeerContainerList;
-      if (!allPeerContainerList) {
+      if (!logicData.canvasCtrl) {
         console.log("等待初始化……");
         return;
       }
-      const selectedPeerContainers = allPeerContainerList.getPeerContainersByClassName(
+      const allPc = logicData.canvasCtrl.allPc;
+      const selectedPeerContainers = allPc.getPeerContainersByClassName(
         "active"
       );
       if (selectedPeerContainers.size < 2) {
-        console.log("没有选择足够的节点，请选择两个节点（按住ctrl进行多选）");
+        console.log("没有选择足够的节点，请选择两个节点");
         return;
       }
       const [startPc, endPc] = [...selectedPeerContainers];
@@ -374,6 +400,7 @@ export default defineComponent({
       startPc.toPoint().onData.emit(data);
 
       logicData.currentBoardcastTask = {
+        finishedPc: new Set(),
         boardcastMap: new Map([[startPc, boardcast]]),
         stepCount: 0,
       };
@@ -383,37 +410,80 @@ export default defineComponent({
       // boardcast.getNextPoint();
     },
     async stepInBroadcast() {
-      const allPeerContainerList = logicData.allPeerContainerList;
-      const { currentBoardcastTask } = logicData;
-      if (!currentBoardcastTask || !allPeerContainerList) {
+      if (!logicData.canvasCtrl || !logicData.currentBoardcastTask) {
         console.log("还未准备开始广播");
         return;
       }
-      const { boardcastMap } = currentBoardcastTask;
-      for (const [peerView, boardcast] of boardcastMap) {
-        const point = await boardcast.getNextPoint();
-        if (!point) {
+      const { currentBoardcastTask, canvasCtrl } = logicData;
+      const { boardcastMap, finishedPc } = currentBoardcastTask;
+      const { allPc, debugView } = canvasCtrl;
+
+      const debug = false;
+      const STEP = ++this.$data.boardcastStepCount;
+      debug && console.group(`第${STEP}步`);
+      let size = boardcastMap.size;
+      debugView.clear();
+      for (const [fromPc, fromBoardcast] of boardcastMap) {
+        if (finishedPc.has(fromPc)) {
           continue;
         }
-
-        const targetPc = allPeerContainerList[point.toNumber()];
-        let targetBoardcast = boardcastMap.get(targetPc);
-        if (!targetBoardcast) {
-          targetBoardcast = targetPc.doBoardcast(
-            allPeerContainerList[boardcast.endPoint.toNumber()],
-            boardcast.data
-          );
-          boardcastMap.set(targetPc, targetBoardcast);
+        const fromPoint = fromPc.toPoint();
+        const toPoint = await fromBoardcast.getNextPoint();
+        if (!toPoint) {
+          finishedPc.add(fromPc);
+          continue;
         }
-        point.onData.emit(boardcast.data);
-        targetBoardcast.resolvePoint(point);
+        const toPc = allPc[toPoint.toNumber()];
+
+        debug &&
+          console.log(
+            `${fromPoint.toReadableString()} => ${toPoint.toReadableString()}`
+          );
+
+        debugView.drawAniDashedLine(
+          fromPc.peer.viewBound.centerXY,
+          toPc.peer.viewBound.centerXY
+        );
+
+        let toBoardcast = boardcastMap.get(toPc);
+        if (!toBoardcast) {
+          toBoardcast = toPc.doBoardcast(
+            allPc[fromBoardcast.endPoint.toNumber()],
+            fromBoardcast.data
+          );
+          boardcastMap.set(toPc, toBoardcast);
+        }
+        toPoint.onData.emit(fromBoardcast.data);
+        toBoardcast.resolvePoint(fromPoint);
+        if (--size === 0) {
+          break;
+        }
       }
-      this.$data.boardcastStepCount++;
+      if (boardcastMap.size === allPc.length) {
+        this.$data.boardcastDone = true;
+        return;
+      }
+
+      debug && console.groupEnd();
     },
 
     abortBroadcast() {
+      if (!logicData.canvasCtrl) {
+        return;
+      }
+      for (const pc of logicData.canvasCtrl.allPc) {
+        pc.classList.remove("boardcasted");
+        const ccn = pc.classList.find((c) =>
+          c.startsWith(countClassNamePrefix)
+        );
+        if (ccn) {
+          pc.classList.remove(ccn);
+        }
+      }
       logicData.currentBoardcastTask = undefined;
       this.$data.boardcastReady = false;
+      this.$data.boardcastStepCount = 0;
+      this.$data.boardcastDone = false;
     },
   },
 });

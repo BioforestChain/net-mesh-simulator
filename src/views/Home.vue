@@ -63,7 +63,7 @@
               >准备开始广播</ion-button
             >
             <template v-else>
-              <ion-button @click="stepInBroadcast()"
+              <ion-button @click="stepInBroadcast()" :disabled="boardcastDone"
                 >广播步进({{ boardcastStepCount }})</ion-button
               >
               <ion-button @click="abortBroadcast()">中断广播</ion-button>

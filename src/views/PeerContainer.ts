@@ -6,9 +6,11 @@ import { ViewPeer } from "./Home";
 import { IndexedTokenMap } from "./IndexedTokenMap";
 import { BroadcastMatrix, Point } from "@/matrix/ripple";
 import { ClassList } from "./ClassList";
+import { countClassNamePrefix } from "./const";
 
 export class PeerContainer extends PIXI.Container {
   public readonly peerView = new PIXI.Graphics();
+  public readonly labelView = new PIXI.Text("");
   public readonly meshView = new PIXI.Graphics();
   @cacheGetter
   private get all() {
@@ -68,6 +70,12 @@ export class PeerContainer extends PIXI.Container {
     peerContainer.addChild(peerView);
     peerView.interactive = true;
 
+    const { labelView } = this;
+    labelView.style.fontSize = viewBound.width * 0.5;
+    labelView.style.fill = 0xffffff;
+    labelView.visible = false;
+    peerView.addChild(labelView);
+
     const { meshView } = this;
     meshView.alpha = MESH_STYLE.ALPHA;
     meshView.visible = false;
@@ -117,18 +125,43 @@ export class PeerContainer extends PIXI.Container {
   }
   /**样式绑定 */
   private _initClass() {
-    this.classList.onClassChanged.on(() => {
-      // console.log(peer.index, "class changed:", ...this.classList);
-      if (this.classList.containsSome("active", "hover")) {
-        this._showDetail();
-      } else {
-        this._hideDetail();
+    this.classList.onClassChanged.on((info) => {
+      if (
+        info.list.some(
+          (className) => className === "active" || className === "hover"
+        )
+      ) {
+        if (this.classList.containsSome("active", "hover")) {
+          this._showDetail();
+        } else {
+          this._hideDetail();
+        }
       }
 
-      if (this.classList.containsSome("boardcasted")) {
-        this.peerView.tint = 0x00ff00;
-      } else {
-        this.peerView.tint = 0xffffff;
+      if (info.list.some((className) => className === "boardcasted")) {
+        if (this.classList.containsSome("boardcasted")) {
+          this.peerView.tint = 0x00ff00;
+        } else {
+          this.peerView.tint = 0xffffff;
+        }
+      }
+
+      if (info.list.some((c) => c.startsWith(countClassNamePrefix))) {
+        const countClassName = this.classList.find((c) =>
+          c.startsWith(countClassNamePrefix)
+        );
+        if (countClassName) {
+          this.labelView.visible = true;
+          this.labelView.text = countClassName.slice(
+            countClassNamePrefix.length
+          );
+          this.labelView.x =
+            this.peer.viewBound.centerX - this.labelView.width / 2;
+          this.labelView.y =
+            this.peer.viewBound.centerY - this.labelView.height / 2;
+        } else {
+          this.labelView.visible = false;
+        }
       }
     });
   }
@@ -210,7 +243,7 @@ export class PeerContainer extends PIXI.Container {
       const cPeerView = cPeerContainer.getChildAt(0);
       cPeerView.filters = hideFilters;
       cPeerView.parentGroup = peerGroup;
-      cPeerContainer.cacheAsBitmap = true;
+      // cPeerContainer.cacheAsBitmap = true;
     }
 
     // peerContainer.cacheAsBitmap = true;
@@ -231,6 +264,19 @@ export class PeerContainer extends PIXI.Container {
       ));
       point.onData.on((data) => {
         this.classList.add("boardcasted");
+        const countClassName = this.classList.find((c) =>
+          c.startsWith(countClassNamePrefix)
+        );
+        if (countClassName) {
+          this.classList.remove(countClassName);
+          this.classList.add(
+            `${countClassNamePrefix}${parseInt(
+              countClassName.slice(countClassNamePrefix.length)
+            ) + 1}`
+          );
+        } else {
+          this.classList.add(`${countClassNamePrefix}1`);
+        }
       });
     }
     return this._point;

@@ -46,6 +46,13 @@ export class ClassList<S> {
   containsEvery(...classNameList: string[]) {
     return this._tokenSet.hasEvery(...classNameList);
   }
+  find(filter: (className: string) => boolean) {
+    for (const className of this._tokenSet) {
+      if (filter(className)) {
+        return className;
+      }
+    }
+  }
   [Symbol.iterator]() {
     return this._tokenSet[Symbol.iterator]();
   }

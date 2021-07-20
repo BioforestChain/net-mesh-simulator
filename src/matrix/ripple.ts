@@ -28,6 +28,9 @@ export class Point implements BM.Point {
     }
     return this._n;
   }
+  toReadableString() {
+    return `(${this.x + 1},${this.y + 1})`;
+  }
   calcDistancePow2(point: BM.Point) {
     return (this.x - point.x) ** 2 + (this.y - point.y) ** 2;
   }
