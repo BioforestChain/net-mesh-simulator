@@ -2,6 +2,7 @@ import "./@types";
 import { BaseMatrixBroadcast } from "./mb";
 import { Evt } from "./evt";
 import { Point } from "./Point";
+
 export class BroadcastMatrix implements BM.BroadcastMatrix<Point> {
   public readonly connectedPoints = new Map<bigint, Point>();
   constructor(public readonly currentPoint: Point) {}
@@ -30,8 +31,11 @@ interface PointDetail {
 }
 
 export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
+
+  /** 找出当前节点的邻居节点，排序后，找出比自己小的节点放在最后面，然后开始广播 */
   protected _init() {
     const allPointDetailList: PointDetail[] = [];
+    //this._martix指的是?
     for (const point of this._martix.connectedPoints.values()) {
       allPointDetailList.push({
         point,
@@ -43,7 +47,7 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
       return Number(a.value - b.value);
     });
 
-    /// 找到比自己大的，将它们放到后面去广播
+    /// 找到比自己大的，将它们放到后面去广播（应该是找到比自己小的放后面吧?）
     const currentValue = this.currentPoint.toBigInt();
     const index = allPointDetailList.findIndex(
       (pd) => pd.value >= currentValue
@@ -57,22 +61,28 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
 
     this._bc = this.doBroadcast(allPointDetailList);
   }
+
   private allPointDetailList!: Array<PointDetail>;
+  private resolvedPointIds = new Set<bigint>();
+  private rejectedPointIds = new Set<bigint>();
+
+
   private _hasResolved(pointDetail: PointDetail) {
     return this.resolvedPointIds.has(pointDetail.value);
   }
-  private resolvedPointIds = new Set<bigint>();
   resolvePoint(point: Point) {
     this.resolvedPointIds.add(point.toBigInt());
     return true;
   }
-  private rejectedPointIds = new Set<bigint>();
   rejectPoint(point: Point) {
     this.rejectedPointIds.add(point.toBigInt());
     return true;
   }
 
+
   readonly onSkipMinPointId = new Evt<number>();
+
+  /** 针对排序的邻居列表，逐个点判断并广播 */
   async *doBroadcast(sortedAllPointDetailList: Array<PointDetail>) {
     do {
       for (const pointDetail of sortedAllPointDetailList) {

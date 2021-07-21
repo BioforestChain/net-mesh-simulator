@@ -4,7 +4,7 @@ export class Point implements BM.PointPro {
   constructor(
     public readonly x: number,
     public readonly y: number,
-    /* 正方形的变长 */
+    /* 正方形的边长 */
     public readonly edgeSize: number
   ) {
     this.onData.on((data) => {

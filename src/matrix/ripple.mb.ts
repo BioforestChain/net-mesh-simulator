@@ -145,6 +145,9 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
   private allMinPointDetailMap!: ReadonlyMap<number, MinPointDetail>;
   private todoTasks!: ReadonlyMap<MinPointDetail, ReadonlySet<PointDetail>>;
   private resolvedPointIds = new Map<number, Set<bigint>>();
+  private rejectedPointIds = new Set<bigint>();
+
+
   private _hasResolved(pointDetail: PointDetail) {
     const pointDetails = this.resolvedPointIds.get(pointDetail.minPointId);
     if (pointDetails) {
@@ -152,7 +155,6 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
     }
     return false;
   }
-  private rejectedPointIds = new Set<bigint>();
   resolvePoint(point: Point) {
     const pointDetail = this._getPointDetailByPointId(point.toBigInt());
     if (!pointDetail) {
@@ -195,15 +197,20 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
     // cellPoints.add(pointId);
     // return true;
   }
+
+
   private _getPointDetailByPointId(pointId: bigint) {
     return this.allPointDetailMap.get(pointId);
   }
   private _getMinPointByMinPointId(minPointId: number) {
     return this.allMinPointDetailMap.get(minPointId);
   }
+  
 
   readonly onSkipMinPointId = new Evt<number>();
   private _level = 1;
+
+
   async *doBroadcast(
     allTasks: ReadonlyMap<MinPointDetail, ReadonlySet<PointDetail>>
   ) {

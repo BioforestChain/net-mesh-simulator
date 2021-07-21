@@ -516,6 +516,7 @@ export default defineComponent({
           continue;
         }
         const fromPoint = fromPc.toPoint();
+        //获取下一个点?
         const toPoint = await fromBoardcast.getNextPoint();
         if (!toPoint) {
           finishedPc.add(fromPc);
