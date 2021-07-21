@@ -28,6 +28,19 @@
               </ion-col>
               <ion-col size="12" size-sm>
                 <ion-item>
+                  <ion-label position="fixed">广播方式</ion-label>
+                  <ion-select v-model="boardcastMatrixType">
+                    <ion-select-option
+                      v-for="bmitem in allBoardcastMatrixType"
+                      :key="bmitem[0]"
+                      :value="bmitem[1]"
+                      >{{ bmitem[1] }}</ion-select-option
+                    >
+                  </ion-select>
+                </ion-item>
+              </ion-col>
+              <ion-col size="12" size-sm>
+                <ion-item>
                   <ion-label position="fixed">最大互连率</ion-label>
                   <ion-input
                     class="text-right"

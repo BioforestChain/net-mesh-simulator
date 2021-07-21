@@ -4,10 +4,16 @@ import { OutlineFilter } from "@pixi/filter-outline";
 import { bindThis, cacheGetter } from "@bfchain/util-decorator";
 import { ViewPeer } from "./Home";
 import { IndexedTokenMap } from "./IndexedTokenMap";
-import { BroadcastMatrix } from "@/matrix/ripple";
+import { BroadcastMatrix as RippleBroadcastMatrix } from "@/matrix/ripple.mb";
+import { BroadcastMatrix as LinearBroadcastMatrix } from "@/matrix/linear.mb";
 import { Point } from "@/matrix/Point";
 import { ClassList } from "./ClassList";
 import { countClassNamePrefix } from "./const";
+
+export enum MATRIX_TYPE {
+  Linear = "线性广播",
+  Ripple = "涟漪广播",
+}
 
 export class PeerContainer extends PIXI.Container {
   public readonly peerView = new PIXI.Graphics();
@@ -304,18 +310,32 @@ export class PeerContainer extends PIXI.Container {
     return this._point;
   }
   /**初始化与广播矩阵的绑定 */
-  private matrix?: BroadcastMatrix;
-  private _initMatrix() {
+  private matrix?: BM.BroadcastMatrix<Point>;
+  private _initMatrix(mType: MATRIX_TYPE = MATRIX_TYPE.Ripple) {
     if (!this.matrix) {
-      this.matrix = new BroadcastMatrix(this.toPoint());
+      switch (mType) {
+        case MATRIX_TYPE.Ripple:
+          this.matrix = new RippleBroadcastMatrix(this.toPoint());
+          break;
+        case MATRIX_TYPE.Linear:
+          this.matrix = new LinearBroadcastMatrix(this.toPoint());
+          break;
+      }
       for (const [cindex] of this.peer.connectedPeers) {
         this.matrix.addConntectedPoint(this.all[cindex].toPoint());
       }
     }
     return this.matrix;
   }
-  doBoardcast(endPc: PeerContainer, data: string) {
-    const boardcast = this._initMatrix().startMartixBroadcast(
+  doBoardcast(
+    startPc: PeerContainer,
+    endPc: PeerContainer,
+    data: string,
+    mType?: MATRIX_TYPE
+  ) {
+    const matrix = this._initMatrix(mType);
+    const boardcast = matrix.startMartixBroadcast(
+      startPc.toPoint(),
       endPc.toPoint(),
       data
     );

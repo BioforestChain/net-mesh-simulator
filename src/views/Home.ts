@@ -16,18 +16,22 @@ import {
   IonCardTitle,
   // IonCardSubtitle,
   IonCardContent,
+  IonSelect,
+  IonSelectOption,
 } from "@ionic/vue";
 import { defineComponent } from "vue";
 import * as PIXI from "pixi.js";
 import { Layer, Group, Stage } from "@pixi/layers";
 import * as convert from "color-convert";
 import * as colorString from "color-string";
-import { PeerContainer, PeerContainerArray } from "./PeerContainer";
-import { MatrixBroadcast } from "@/matrix/ripple";
-import { Point } from "@/matrix/Point";
+import {
+  MATRIX_TYPE,
+  PeerContainer,
+  PeerContainerArray,
+} from "./PeerContainer";
 import { countClassNamePrefix } from "./const";
-import { cacheGetter } from "@bfchain/util-decorator";
 import { DebugView } from "./DebugView";
+import { Point } from "@/matrix/Point";
 
 type $MatrixGenerateOptions = {
   edgeSize: number;
@@ -35,6 +39,14 @@ type $MatrixGenerateOptions = {
   minConnectRate: number;
 };
 const BUILDIN_MATRIX_GENERATE_OPTIONS_LIST = [
+  {
+    label: "Default",
+    options: {
+      edgeSize: 15,
+      maxConnectRate: 100,
+      minConnectRate: 100,
+    } as $MatrixGenerateOptions,
+  },
   {
     label: "Default",
     options: {
@@ -114,7 +126,9 @@ const logicData = {
     | undefined,
   currentBoardcastTask: undefined as
     | {
-        boardcastMap: Map<PeerContainer, MatrixBroadcast>;
+        boardcastMap: Map<PeerContainer, BM.MatrixBroadcast<Point>>;
+        startPc: PeerContainer;
+        endPc: PeerContainer;
         finishedPc: Set<PeerContainer>;
         stepCount: number;
       }
@@ -141,6 +155,8 @@ export default defineComponent({
     IonCardTitle,
     // IonCardSubtitle,
     IonCardContent,
+    IonSelect,
+    IonSelectOption,
   },
   data() {
     return {
@@ -153,12 +169,16 @@ export default defineComponent({
         width: 1000,
         height: 1000,
       },
+      boardcastMatrixType: MATRIX_TYPE.Linear,
+      allBoardcastMatrixType: Object.entries(MATRIX_TYPE),
       boardcastReady: false,
       boardcastStepCount: 0,
+      boardcastCount: 1, /// 广播次数，包括起点，所以默认是1
       boardcastDone: false,
     };
   },
   created() {
+    Reflect.set(self, "ii", this);
     this.generateNetMesh();
   },
   mounted() {
@@ -365,7 +385,7 @@ export default defineComponent({
         const peerContainer = new PeerContainer(peer, peerContainerOpts);
         rootContainer.addChild(peerContainer);
       }
-      const debugView = new DebugView(app.ticker);
+      const debugView = new DebugView(app);
       debugView.parentGroup = debugGroup;
       rootContainer.addChild(debugView);
 
@@ -385,7 +405,7 @@ export default defineComponent({
       this.generateNetMesh();
       this.canvasRender(this.$refs.canvas as HTMLCanvasElement);
     },
-    prepareBroadcast() {
+    async prepareBroadcast() {
       if (!logicData.canvasCtrl) {
         console.log("等待初始化……");
         return;
@@ -400,16 +420,24 @@ export default defineComponent({
       }
       const [startPc, endPc] = [...selectedPeerContainers];
       const data = new Date().toLocaleTimeString();
-      const boardcast = startPc.doBoardcast(endPc, data);
+      const boardcast = await startPc.doBoardcast(
+        startPc,
+        endPc,
+        data,
+        this.$data.boardcastMatrixType
+      );
       startPc.toPoint().onData.emit(data);
 
       logicData.currentBoardcastTask = {
         finishedPc: new Set(),
+        startPc,
+        endPc,
         boardcastMap: new Map([[startPc, boardcast]]),
         stepCount: 0,
       };
       this.$data.boardcastReady = true;
       this.$data.boardcastStepCount = 0;
+      this.$data.boardcastCount = 1;
 
       // boardcast.getNextPoint();
     },
@@ -418,8 +446,9 @@ export default defineComponent({
         console.log("还未准备开始广播");
         return;
       }
+      const { boardcastMatrixType } = this;
       const { currentBoardcastTask, canvasCtrl } = logicData;
-      const { boardcastMap, finishedPc } = currentBoardcastTask;
+      const { boardcastMap, finishedPc, startPc, endPc } = currentBoardcastTask;
       const { allPc, debugView } = canvasCtrl;
 
       const debug = false;
@@ -452,28 +481,51 @@ export default defineComponent({
 
         let toBoardcast = boardcastMap.get(toPc);
         if (!toBoardcast) {
-          toBoardcast = toPc.doBoardcast(
-            allPc[fromBoardcast.endPoint.toNumber()],
-            fromBoardcast.data
+          toBoardcast = await toPc.doBoardcast(
+            startPc,
+            endPc,
+            fromBoardcast.data,
+            boardcastMatrixType
           );
           boardcastMap.set(toPc, toBoardcast);
         }
         toPoint.onData.emit(fromBoardcast.data);
         toBoardcast.resolvePoint(fromPoint);
+        this.$data.boardcastCount++;
         i++;
         /// 因为一直又新的节点进入到广播列表中,所以这里根据原有数量来限制新节点不要进入这个循环
         if (--size === 0) {
           break;
         }
       }
+
+      let boardcastDone = false;
       if (boardcastMap.size === allPc.length || i === 0) {
-        this.$data.boardcastDone = true;
+        boardcastDone = this.$data.boardcastDone = true;
       }
 
       const progress = boardcastMap.size / allPc.length;
-      if (progress * 0.9) {
-        console.log(`达成${(progress * 100).toFixed(2)}%，使用了${STEP}步`);
+      let prefix = "";
+      if (boardcastDone) {
+        const {
+          edgeSize,
+          minConnectRate,
+          maxConnectRate,
+        } = this.matrixGenOptions;
+        prefix = `在(${edgeSize}✖${edgeSize})的矩阵中，节点拥有${minConnectRate.toFixed(
+          2
+        )}%~${maxConnectRate.toFixed(
+          2
+        )}%的节点覆盖率，使用[${boardcastMatrixType}]，`;
       }
+      console.log(
+        `使用了${STEP}步，${prefix}达成${(progress * 100).toFixed(
+          2
+        )}%的覆盖率，效率：${(
+          (boardcastMap.size / this.$data.boardcastCount) *
+          100
+        ).toFixed(2)}%`
+      );
 
       debug && console.groupEnd();
     },
@@ -494,6 +546,7 @@ export default defineComponent({
       logicData.currentBoardcastTask = undefined;
       this.$data.boardcastReady = false;
       this.$data.boardcastStepCount = 0;
+      this.$data.boardcastCount = 1;
       this.$data.boardcastDone = false;
       logicData.canvasCtrl.debugView.clear();
     },

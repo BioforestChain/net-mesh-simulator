@@ -1,9 +1,10 @@
 import "./@types";
 import { Evt } from "./evt";
 import { Point } from "./Point";
-export class BroadcastMatrix implements BM.BroadcastMatrix {
+import { BaseMatrixBroadcast } from "./mb";
+export class BroadcastMatrix implements BM.BroadcastMatrix<Point> {
   public readonly connectedPoints = new Map<bigint, Point>();
-  constructor(public readonly startPoint: Point) {}
+  constructor(public readonly currentPoint: Point) {}
   addConntectedPoint(cpoint: Point) {
     const bi = cpoint.toBigInt();
     if (this.connectedPoints.has(bi)) {
@@ -17,8 +18,8 @@ export class BroadcastMatrix implements BM.BroadcastMatrix {
    * 开始一个广播任务
    * @param targetPoint 方向目标
    */
-  startMartixBroadcast(direction: Point, data: string) {
-    return new MatrixBroadcast(this, direction, data);
+  startMartixBroadcast(startPoint: Point, endPoint: Point, data: string) {
+    return new MatrixBroadcast(this, startPoint, endPoint, data);
   }
   //   removeConntectedPoint(cpoint:)
 }
@@ -37,28 +38,11 @@ type MinPointDetail = {
   minAngle: number;
 };
 
-abstract class BaseMatrixBroadcast implements BM.MartixBroadcast {
-  get startPoint() {
-    return this._martix.startPoint;
-  }
-  constructor(
-    protected _martix: BroadcastMatrix,
-    public readonly endPoint: Point,
-    public data: string
-  ) {
-    this._init();
-  }
-  protected abstract _init(): unknown;
-  abstract resolvePoint(point: BM.Point): BM.PromiseMaybe<boolean>;
-  abstract rejectPoint(point: BM.Point): BM.PromiseMaybe<boolean>;
-  abstract getNextPoint(): BM.PromiseMaybe<BM.Point | undefined>;
-}
-
-export class MatrixBroadcast extends BaseMatrixBroadcast {
+export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
   protected _init() {
     const gridSize = 4;
-    const { startPoint, endPoint } = this;
-    const directionVector = startPoint.makeVector(endPoint);
+    const { currentPoint, endPoint } = this;
+    const directionVector = currentPoint.makeVector(endPoint);
 
     /**
      * 所有解析过后的point索引
@@ -73,13 +57,13 @@ export class MatrixBroadcast extends BaseMatrixBroadcast {
     const minPointCacheList: Point[] = [];
 
     /// 构建level2的结构
-    const MAX_DISTANCE = this._martix.startPoint.edgeSize * Math.SQRT2;
+    const MAX_DISTANCE = this._martix.currentPoint.edgeSize * Math.SQRT2;
     const MAX_ANGLE = Math.PI;
     for (const point of this._martix.connectedPoints.values()) {
       const distance = Math.sqrt(
-        point.calcDistancePow2(startPoint) + point.calcDistancePow2(endPoint)
+        point.calcDistancePow2(currentPoint) + point.calcDistancePow2(endPoint)
       );
-      const vectorA = startPoint.makeVector(point);
+      const vectorA = currentPoint.makeVector(point);
       const angle = vectorA.calcAngle(directionVector);
 
       const minPoint = point.minPoint(gridSize);
@@ -121,12 +105,12 @@ export class MatrixBroadcast extends BaseMatrixBroadcast {
     /// 排序后构建成一个有序的数组
     const allMinPointDetailList: MinPointDetail[] = [];
     const endMinPoint = endPoint.minPoint(gridSize);
-    const startMinPoint = startPoint.minPoint(gridSize);
+    const startMinPoint = currentPoint.minPoint(gridSize);
     const minDirectionVector = startMinPoint.makeVector(endMinPoint);
     const MAX_MINDISTANCE = endPoint.edgeSize * Math.SQRT2;
     for (const minPoint of allMinPointList) {
       const minDistance = Math.sqrt(
-        minPoint.calcDistancePow2(startPoint) +
+        minPoint.calcDistancePow2(currentPoint) +
           minPoint.calcDistancePow2(endPoint)
       );
       const minVectorA = startMinPoint.makeVector(minPoint);
@@ -226,6 +210,7 @@ export class MatrixBroadcast extends BaseMatrixBroadcast {
     do {
       this._level = 1;
       let skipedMinPointDetail: MinPointDetail | undefined;
+      const finishedPds = new Set<PointDetail>();
       /// 先做一级遍历
       for (const [minPointDetail, sortedPointDetails] of allTasks) {
         if (skipedMinPointDetail !== undefined) {
@@ -245,22 +230,22 @@ export class MatrixBroadcast extends BaseMatrixBroadcast {
             break;
           }
           yield pointDetail.point;
+          finishedPds.add(pointDetail);
           break;
         }
       }
       this._level = 2;
       /// 再做二级遍历
       for (const sortedPointDetails of allTasks.values()) {
-        let i = 0;
         for (const pointDetail of sortedPointDetails) {
-          if (i === 0) {
+          if (finishedPds.has(pointDetail)) {
             continue;
           }
-          i++;
           if (this._hasResolved(pointDetail)) {
             continue;
           }
           yield pointDetail.point;
+          finishedPds.add(pointDetail);
         }
       }
     } while (this.rejectedPointIds.size > 0);

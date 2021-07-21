@@ -1,14 +1,31 @@
 import * as PIXI from "pixi.js";
 export class DebugView extends PIXI.Container {
-  constructor(private aniTicker: PIXI.Ticker) {
+  //   private aniTicker = new PIXI.Ticker();
+  private get aniTicker() {
+    return this.app.ticker;
+  }
+  constructor(private app: PIXI.Application) {
     super();
+    Reflect.set(self, "dv", this);
     this.addChild(this._aniDashLineView);
+
+    const { aniTicker } = this;
     aniTicker.add((t) => {
       if (this._aniFuns.length) {
+        // const st = performance.now();
         this._aniDashLineView.clear();
         for (const aniFun of this._aniFuns) {
           aniFun(t);
         }
+        // const et = performance.now();
+        // const dt = et - st;
+        // const curFPS = 1000 / dt;
+        // if (curFPS < aniTicker.maxFPS) {
+        //   const newMaxFPS = curFPS + (curFPS - aniTicker.maxFPS) / 2;
+        //   const newMinFPS = newMaxFPS / 3;
+        //   aniTicker.minFPS = newMinFPS;
+        //   aniTicker.maxFPS = newMaxFPS;
+        // }
       }
     });
   }
@@ -38,17 +55,17 @@ export class DebugView extends PIXI.Container {
       stop: number;
     };
     const DASHED_COLORS: StopColor[] = [
-    //   {
-    //     color: 0xffffff,
-    //     alpah: 1,
-    //     start: 0,
-    //     stop: 0.5,
-    //   },
+      //   {
+      //     color: 0xffffff,
+      //     alpah: 1,
+      //     start: 0,
+      //     stop: 0.5,
+      //   },
       {
         color: 0x0,
         alpah: 1,
-        start: 0.5,
-        stop: 1,
+        start: 0,
+        stop: 0.5,
       },
     ];
     const useColor = (stopColor: StopColor) => {

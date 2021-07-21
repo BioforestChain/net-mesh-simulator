@@ -1,6 +1,6 @@
 import { Evt } from "./evt";
 
-export class Point implements BM.Point {
+export class Point implements BM.PointPro {
   constructor(
     public readonly x: number,
     public readonly y: number,
