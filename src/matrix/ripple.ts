@@ -1,80 +1,6 @@
 import "./@types";
 import { Evt } from "./evt";
-export class Point implements BM.Point {
-  constructor(
-    public readonly x: number,
-    public readonly y: number,
-    /* 正方形的变长 */
-    public readonly edgeSize: number
-  ) {
-    this.onData.on((data) => {
-      this.ownDatas.add(data);
-    });
-  }
-  readonly onData = new Evt<string>();
-  readonly ownDatas = new Set<string>();
-
-  private _bi?: bigint;
-  toBigInt() {
-    if (this._bi === undefined) {
-      this._bi = BigInt(this.y) * BigInt(this.edgeSize) + BigInt(this.x);
-    }
-    return this._bi;
-  }
-  private _n?: number;
-  toNumber() {
-    if (this._n === undefined) {
-      this._n = this.y * this.edgeSize + this.x;
-    }
-    return this._n;
-  }
-  toReadableString() {
-    return `(${this.x + 1},${this.y + 1})`;
-  }
-  calcDistancePow2(point: BM.Point) {
-    return (this.x - point.x) ** 2 + (this.y - point.y) ** 2;
-  }
-  calcDistance(point: BM.Point) {
-    return Math.sqrt(this.calcDistancePow2(point));
-  }
-  makeVector(toPoint: BM.Point) {
-    return new Vector(toPoint.x - this.x, toPoint.y - this.y, this.edgeSize);
-  }
-  /**
-   *
-   * @param OPEN_MAX 不包含的最大值，比如64，那就是0~63
-   * @returns
-   */
-  min(OPEN_MAX: number) {
-    return {
-      x: Math.floor((this.x / this.edgeSize) * OPEN_MAX),
-      y: Math.floor((this.y / this.edgeSize) * OPEN_MAX),
-    };
-  }
-  minPoint(OPEN_MAX: number, radix: number) {
-    const { x, y } = this.min(OPEN_MAX);
-    return new Point(x, y, radix);
-  }
-}
-class Vector extends Point {
-  calcAngle(vector: Vector) {
-    const a = this;
-    const b = vector;
-    const a_dot_b = a.x * b.x + a.y * b.y;
-    const a_len = a.length;
-    const b_len = b.length;
-    const cos_a_b = a_dot_b / (a_len * b_len);
-    return Math.acos(cos_a_b);
-  }
-  private _len?: number;
-  get length() {
-    if (this._len === undefined) {
-      this._len = this.calcDistance({ x: 0, y: 0 });
-    }
-    return this._len;
-  }
-}
-
+import { Point } from "./Point";
 export class BroadcastMatrix implements BM.BroadcastMatrix {
   public readonly connectedPoints = new Map<bigint, Point>();
   constructor(public readonly startPoint: Point) {}
@@ -97,24 +23,6 @@ export class BroadcastMatrix implements BM.BroadcastMatrix {
   //   removeConntectedPoint(cpoint:)
 }
 
-// class MatrixPoint {
-//   public readonly x: number;
-//   public readonly y: number;
-//   constructor(
-//     public readonly point: Point,
-//     public readonly matrixSize: number
-//   ) {
-//     const POINT_MAX = 2 ** this.point.radix;
-//     this.x = Math.floor((this.point.x / POINT_MAX) * this.matrixSize);
-//     this.y = Math.floor((this.point.y / POINT_MAX) * this.matrixSize);
-//     this._int = this.x + this.y * this.matrixSize;
-//   }
-//   private _int: number;
-//   toInt() {
-//     return this._int;
-//   }
-// }
-
 type PointDetail = {
   point: Point;
   pointId: bigint;
@@ -129,20 +37,29 @@ type MinPointDetail = {
   minAngle: number;
 };
 
-export class MatrixBroadcast implements BM.MartixBroadcast {
-  public readonly gridRadix: number = 6;
-  public readonly gridSize: number = 1 << this.gridRadix;
+abstract class BaseMatrixBroadcast implements BM.MartixBroadcast {
+  get startPoint() {
+    return this._martix.startPoint;
+  }
   constructor(
-    private _martix: BroadcastMatrix,
+    protected _martix: BroadcastMatrix,
     public readonly endPoint: Point,
     public data: string
   ) {
-    const startPoint = this._martix.startPoint;
-    const { gridSize, gridRadix } = this;
+    this._init();
+  }
+  protected abstract _init(): unknown;
+  abstract resolvePoint(point: BM.Point): BM.PromiseMaybe<boolean>;
+  abstract rejectPoint(point: BM.Point): BM.PromiseMaybe<boolean>;
+  abstract getNextPoint(): BM.PromiseMaybe<BM.Point | undefined>;
+}
+
+export class MatrixBroadcast extends BaseMatrixBroadcast {
+  protected _init() {
+    const gridSize = 4;
+    const { startPoint, endPoint } = this;
     const directionVector = startPoint.makeVector(endPoint);
 
-    /// 排序后构建成一个有序的数组
-    const allPointDetailList: PointDetail[] = [];
     /**
      * 所有解析过后的point索引
      */
@@ -155,28 +72,29 @@ export class MatrixBroadcast implements BM.MartixBroadcast {
     /**用于缓存minPointId与minPoint */
     const minPointCacheList: Point[] = [];
 
+    /// 构建level2的结构
+    const MAX_DISTANCE = this._martix.startPoint.edgeSize * Math.SQRT2;
+    const MAX_ANGLE = Math.PI;
     for (const point of this._martix.connectedPoints.values()) {
       const distance = Math.sqrt(
-        point.calcDistancePow2(startPoint) +
-          point.calcDistancePow2(this.endPoint)
+        point.calcDistancePow2(startPoint) + point.calcDistancePow2(endPoint)
       );
       const vectorA = startPoint.makeVector(point);
       const angle = vectorA.calcAngle(directionVector);
 
-      const minPoint = point.minPoint(gridSize, gridRadix);
+      const minPoint = point.minPoint(gridSize);
       const minPointId = minPoint.toNumber();
       minPointCacheList[minPointId] = minPoint;
 
       const pointDetail = {
         point,
         pointId: point.toBigInt(),
-        distance,
-        angle,
+        distance: distance / MAX_DISTANCE,
+        angle: angle / MAX_ANGLE,
 
         minPoint,
         minPointId,
       };
-      allPointDetailList.push(pointDetail);
 
       allPointDetailMap.set(pointDetail.pointId, pointDetail);
       /// 现在将它们归入棋盘中
@@ -187,9 +105,9 @@ export class MatrixBroadcast implements BM.MartixBroadcast {
       }
       cellPointList.push(pointDetail);
     }
-    this.allPointDetailList = allPointDetailList;
     this.allPointDetailMap = allPointDetailMap;
 
+    /// 构建level1的结构
     for (const cellPointList of groupedPointDetailList.values()) {
       cellPointList.sort((a, b) => {
         /// 在同一个棋盘内，角度优先，然后是距离，占比6/4开
@@ -202,21 +120,22 @@ export class MatrixBroadcast implements BM.MartixBroadcast {
     );
     /// 排序后构建成一个有序的数组
     const allMinPointDetailList: MinPointDetail[] = [];
-    const endMinPoint = endPoint.minPoint(gridSize, gridRadix);
-    const startMinPoint = startPoint.minPoint(gridSize, gridRadix);
+    const endMinPoint = endPoint.minPoint(gridSize);
+    const startMinPoint = startPoint.minPoint(gridSize);
     const minDirectionVector = startMinPoint.makeVector(endMinPoint);
+    const MAX_MINDISTANCE = endPoint.edgeSize * Math.SQRT2;
     for (const minPoint of allMinPointList) {
       const minDistance = Math.sqrt(
         minPoint.calcDistancePow2(startPoint) +
-          minPoint.calcDistancePow2(this.endPoint)
+          minPoint.calcDistancePow2(endPoint)
       );
       const minVectorA = startMinPoint.makeVector(minPoint);
       const minAngle = minVectorA.calcAngle(minDirectionVector);
       allMinPointDetailList.push({
         minPoint,
         minPointId: minPoint.toNumber(),
-        minAngle,
-        minDistance,
+        minAngle: minAngle / MAX_ANGLE,
+        minDistance: minDistance / MAX_MINDISTANCE,
       });
     }
     allMinPointDetailList.sort((a, b) => {
@@ -238,11 +157,9 @@ export class MatrixBroadcast implements BM.MartixBroadcast {
 
     this._bc = this.doBroadcast(this.todoTasks);
   }
-  // private pointAndDestances = new Map<bigint, number>(); //=new Set<() new Map<number, Set<MatrixPoint>>();
-  private allPointDetailList: PointDetail[];
-  private allPointDetailMap: ReadonlyMap<bigint, PointDetail>;
-  private allMinPointDetailMap: ReadonlyMap<number, MinPointDetail>;
-  private todoTasks: ReadonlyMap<MinPointDetail, ReadonlySet<PointDetail>>;
+  private allPointDetailMap!: ReadonlyMap<bigint, PointDetail>;
+  private allMinPointDetailMap!: ReadonlyMap<number, MinPointDetail>;
+  private todoTasks!: ReadonlyMap<MinPointDetail, ReadonlySet<PointDetail>>;
   private resolvedPointIds = new Map<number, Set<bigint>>();
   private _hasResolved(pointDetail: PointDetail) {
     const pointDetails = this.resolvedPointIds.get(pointDetail.minPointId);
@@ -348,7 +265,7 @@ export class MatrixBroadcast implements BM.MartixBroadcast {
       }
     } while (this.rejectedPointIds.size > 0);
   }
-  private _bc: AsyncGenerator<Point>;
+  private _bc!: AsyncGenerator<Point>;
   async getNextPoint() {
     const item = await this._bc.next();
     if (item.done) {

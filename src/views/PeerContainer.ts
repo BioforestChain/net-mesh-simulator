@@ -4,7 +4,8 @@ import { OutlineFilter } from "@pixi/filter-outline";
 import { bindThis, cacheGetter } from "@bfchain/util-decorator";
 import { ViewPeer } from "./Home";
 import { IndexedTokenMap } from "./IndexedTokenMap";
-import { BroadcastMatrix, Point } from "@/matrix/ripple";
+import { BroadcastMatrix } from "@/matrix/ripple";
+import { Point } from "@/matrix/Point";
 import { ClassList } from "./ClassList";
 import { countClassNamePrefix } from "./const";
 
@@ -55,7 +56,7 @@ export class PeerContainer extends PIXI.Container {
     } = this.opts;
     allPeerContainerList[peer.index] = peerContainer;
 
-    const { viewBound } = peer;
+    const { viewBound, edgeSize } = peer;
     const { peerView } = this;
     peerView.beginFill(PEER_VIEW_FILL);
     peerView.drawRoundedRect(
@@ -90,7 +91,28 @@ export class PeerContainer extends PIXI.Container {
     const { centerX, centerY } = viewBound;
     for (const cpeer of peer.connectedPeers.values()) {
       meshView.moveTo(centerX, centerY);
-      meshView.lineTo(cpeer.viewBound.centerX, cpeer.viewBound.centerY);
+      const { centerX: denterX, centerY: denterY } = cpeer.viewBound;
+      const absDiffx = Math.abs(peer.x - cpeer.x);
+      const absDiffy = Math.abs(peer.y - cpeer.y);
+      if (absDiffx < 0 || absDiffy < 0) {
+        meshView.lineTo(cpeer.viewBound.centerX, cpeer.viewBound.centerY);
+        continue;
+      } else {
+        const dx = (denterX - centerX) / 2;
+        const dy = (denterY - centerY) / edgeSize;
+        meshView.bezierCurveTo(
+          centerX + dx,
+          centerY,
+          denterX,
+          denterY - dy,
+          // centerX,
+          // centerY + dy,
+          // denterX + dx,
+          // denterY,
+          denterX,
+          denterY
+        );
+      }
     }
     meshView.parentGroup = meshGroup;
     meshView.blendMode = PIXI.BLEND_MODES.SOFT_LIGHT;

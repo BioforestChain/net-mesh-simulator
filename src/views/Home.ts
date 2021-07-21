@@ -23,7 +23,8 @@ import { Layer, Group, Stage } from "@pixi/layers";
 import * as convert from "color-convert";
 import * as colorString from "color-string";
 import { PeerContainer, PeerContainerArray } from "./PeerContainer";
-import { MatrixBroadcast, Point } from "@/matrix/ripple";
+import { MatrixBroadcast } from "@/matrix/ripple";
+import { Point } from "@/matrix/Point";
 import { countClassNamePrefix } from "./const";
 import { cacheGetter } from "@bfchain/util-decorator";
 import { DebugView } from "./DebugView";
@@ -176,6 +177,9 @@ export default defineComponent({
   },
   methods: {
     generateNetMesh() {
+      // 如果现在有在进行广播任务,先进行中断,再重新生成
+      this.abortBroadcast();
+
       const _st = performance.now();
       const peerMatrix: ViewPeer[] = [];
       const options = this.$data.matrixGenOptions;
@@ -423,6 +427,7 @@ export default defineComponent({
       debug && console.group(`第${STEP}步`);
       let size = boardcastMap.size;
       debugView.clear();
+      let i = 0;
       for (const [fromPc, fromBoardcast] of boardcastMap) {
         if (finishedPc.has(fromPc)) {
           continue;
@@ -455,13 +460,19 @@ export default defineComponent({
         }
         toPoint.onData.emit(fromBoardcast.data);
         toBoardcast.resolvePoint(fromPoint);
+        i++;
+        /// 因为一直又新的节点进入到广播列表中,所以这里根据原有数量来限制新节点不要进入这个循环
         if (--size === 0) {
           break;
         }
       }
-      if (boardcastMap.size === allPc.length) {
+      if (boardcastMap.size === allPc.length || i === 0) {
         this.$data.boardcastDone = true;
-        return;
+      }
+
+      const progress = boardcastMap.size / allPc.length;
+      if (progress * 0.9) {
+        console.log(`达成${(progress * 100).toFixed(2)}%，使用了${STEP}步`);
       }
 
       debug && console.groupEnd();
@@ -484,6 +495,7 @@ export default defineComponent({
       this.$data.boardcastReady = false;
       this.$data.boardcastStepCount = 0;
       this.$data.boardcastDone = false;
+      logicData.canvasCtrl.debugView.clear();
     },
   },
 });
