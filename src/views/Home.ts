@@ -11,6 +11,8 @@ import {
   IonRow,
   IonLabel,
   IonButton,
+  IonButtons,
+  IonIcon,
   IonCard,
   IonCardHeader,
   IonCardTitle,
@@ -18,6 +20,7 @@ import {
   IonCardContent,
   IonSelect,
   IonSelectOption,
+  alertController,
 } from "@ionic/vue";
 import { defineComponent } from "vue";
 import * as PIXI from "pixi.js";
@@ -32,6 +35,13 @@ import {
 import { countClassNamePrefix } from "./const";
 import { DebugView } from "./DebugView";
 import { Point } from "@/matrix/Point";
+import {
+  playSkipForwardCircleOutline,
+  playCircleOutline,
+  stopOutline,
+  stopCircleOutline,
+  playForwardCircleOutline,
+} from "ionicons/icons";
 
 type $MatrixGenerateOptions = {
   edgeSize: number;
@@ -43,8 +53,8 @@ const BUILDIN_MATRIX_GENERATE_OPTIONS_LIST = [
     label: "Default",
     options: {
       edgeSize: 15,
-      maxConnectRate: 100,
-      minConnectRate: 100,
+      maxConnectRate: 50,
+      minConnectRate: 10,
     } as $MatrixGenerateOptions,
   },
   {
@@ -56,6 +66,24 @@ const BUILDIN_MATRIX_GENERATE_OPTIONS_LIST = [
     } as $MatrixGenerateOptions,
   },
 ];
+export class ViewPeer {
+  constructor(
+    readonly index: number,
+    public readonly viewBound: ViewBound,
+    public readonly x: number,
+    public readonly y: number,
+    public readonly edgeSize: number
+  ) {}
+  readonly connectedPeers = new Map<number, ViewPeer>();
+  connectedPeerPath() {
+    let d = "";
+    for (const cpeer of this.connectedPeers.values()) {
+      d += this.viewBound.p2pPath(cpeer.viewBound) + " ";
+    }
+    return d;
+  }
+}
+
 class ViewBound {
   constructor(
     public left: number,
@@ -80,24 +108,6 @@ class ViewBound {
   }
   get centerXY() {
     return [this.centerX, this.centerY] as const;
-  }
-}
-
-export class ViewPeer {
-  constructor(
-    readonly index: number,
-    public readonly viewBound: ViewBound,
-    public readonly x: number,
-    public readonly y: number,
-    public readonly edgeSize: number
-  ) {}
-  readonly connectedPeers = new Map<number, ViewPeer>();
-  connectedPeerPath() {
-    let d = "";
-    for (const cpeer of this.connectedPeers.values()) {
-      d += this.viewBound.p2pPath(cpeer.viewBound) + " ";
-    }
-    return d;
   }
 }
 
@@ -150,6 +160,8 @@ export default defineComponent({
     IonRow,
     IonLabel,
     IonButton,
+    IonButtons,
+    IonIcon,
     IonCard,
     IonCardHeader,
     IonCardTitle,
@@ -157,6 +169,17 @@ export default defineComponent({
     IonCardContent,
     IonSelect,
     IonSelectOption,
+  },
+  setup() {
+    return {
+      icon: {
+        playSkipForwardCircleOutline,
+        playCircleOutline,
+        stopOutline,
+        stopCircleOutline,
+        playForwardCircleOutline,
+      },
+    };
   },
   data() {
     return {
@@ -174,7 +197,13 @@ export default defineComponent({
       boardcastReady: false,
       boardcastStepCount: 0,
       boardcastCount: 1, /// 广播次数，包括起点，所以默认是1
+      boardcastLogs: [] as { time: string; type: string; log: string }[],
       boardcastDone: false,
+      autoBoardcastStepIn: false,
+      /**可否点击“广播步进”按钮 */
+      get canStepInBroadcast() {
+        return this.boardcastDone || this.autoBoardcastStepIn;
+      },
     };
   },
   created() {
@@ -297,6 +326,7 @@ export default defineComponent({
     canvasRender(canvas: HTMLCanvasElement) {
       const _st = performance.now();
       const { peerMatrix, canvasViewBox, matrixGenOptions } = this.$data;
+      PIXI.settings.PREFER_ENV = PIXI.ENV.WEBGL2;
       const app = new PIXI.Application({
         view: canvas,
         width: canvasViewBox.width,
@@ -405,9 +435,20 @@ export default defineComponent({
       this.generateNetMesh();
       this.canvasRender(this.$refs.canvas as HTMLCanvasElement);
     },
+    async alert(title: string, message: string) {
+      const alert = await alertController.create({
+        header: title,
+        // subHeader: 'Subtitle',
+        message: message,
+        buttons: ["确定"],
+      });
+      await alert.present();
+    },
     async prepareBroadcast() {
+      const alert = (message: string) =>
+        this.alert("准备广播出现异常", message);
       if (!logicData.canvasCtrl) {
-        console.log("等待初始化……");
+        alert("等待初始化……");
         return;
       }
       const allPc = logicData.canvasCtrl.allPc;
@@ -415,7 +456,7 @@ export default defineComponent({
         "active"
       );
       if (selectedPeerContainers.size < 2) {
-        console.log("没有选择足够的节点，请选择两个节点");
+        alert("没有选择足够的节点，请选择两个节点");
         return;
       }
       const [startPc, endPc] = [...selectedPeerContainers];
@@ -438,12 +479,25 @@ export default defineComponent({
       this.$data.boardcastReady = true;
       this.$data.boardcastStepCount = 0;
       this.$data.boardcastCount = 1;
+      // this.$data.boardcastLogs = [];
 
       // boardcast.getNextPoint();
     },
+    appendBoardcastLogs(log: string, type = "info") {
+      this.boardcastLogs.unshift({
+        time: new Date().toLocaleTimeString(),
+        type,
+        log,
+      });
+      if (this.boardcastLogs.length > 1000) {
+        this.boardcastLogs.length = 1000;
+      }
+    },
     async stepInBroadcast() {
+      const alert = (message: string) =>
+        this.alert("广播步进出现异常", message);
       if (!logicData.canvasCtrl || !logicData.currentBoardcastTask) {
-        console.log("还未准备开始广播");
+        alert("还未准备开始广播");
         return;
       }
       const { boardcastMatrixType } = this;
@@ -518,18 +572,33 @@ export default defineComponent({
           2
         )}%的节点覆盖率，使用[${boardcastMatrixType}]，`;
       }
-      console.log(
+      this.appendBoardcastLogs(
         `使用了${STEP}步，${prefix}达成${(progress * 100).toFixed(
           2
         )}%的覆盖率，效率：${(
           (boardcastMap.size / this.$data.boardcastCount) *
           100
-        ).toFixed(2)}%`
+        ).toFixed(2)}%`,
+        boardcastDone ? "success" : "info"
       );
 
       debug && console.groupEnd();
     },
-
+    startAutoBoardcastStepIn() {
+      this.autoBoardcastStepIn = true;
+      const auto = async () => {
+        await this.stepInBroadcast();
+        if (this.boardcastDone || !this.autoBoardcastStepIn) {
+          this.stopAutoBoardcastStepIn();
+          return;
+        }
+        requestAnimationFrame(auto);
+      };
+      auto();
+    },
+    stopAutoBoardcastStepIn() {
+      this.autoBoardcastStepIn = false;
+    },
     abortBroadcast() {
       if (!logicData.canvasCtrl) {
         return;
@@ -548,6 +617,7 @@ export default defineComponent({
       this.$data.boardcastStepCount = 0;
       this.$data.boardcastCount = 1;
       this.$data.boardcastDone = false;
+      this.$data.autoBoardcastStepIn = false;
       logicData.canvasCtrl.debugView.clear();
     },
   },

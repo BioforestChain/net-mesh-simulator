@@ -7,11 +7,9 @@
     </ion-header>
 
     <ion-content :fullscreen="true">
-      <ion-header collapse="condense">
-        <ion-toolbar>
-          <ion-title size="large">{{ title }}</ion-title>
-        </ion-toolbar>
-      </ion-header>
+      <!-- <ion-grid>
+        <ion-col>
+      </ion-grid> -->
       <ion-card>
         <ion-grid id="controller-panel">
           <ion-card-header>
@@ -70,17 +68,8 @@
             </ion-row>
 
             <ion-button @click="generateNetMeshAndReander()"
-              >生成网络</ion-button
+              >生成/重置网络</ion-button
             >
-            <ion-button v-if="!boardcastReady" @click="prepareBroadcast()"
-              >准备开始广播</ion-button
-            >
-            <template v-else>
-              <ion-button @click="stepInBroadcast()" :disabled="boardcastDone"
-                >广播步进({{ boardcastStepCount }})</ion-button
-              >
-              <ion-button @click="abortBroadcast()">中断广播</ion-button>
-            </template>
           </ion-card-content>
         </ion-grid>
       </ion-card>
@@ -90,37 +79,77 @@
           <ion-card-title>矩阵网格</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <svg
-            :viewBox="`0 0 ${canvasViewBox.width} ${canvasViewBox.height}`"
-            class="bg-gray-50 hidden"
-          >
-            <template v-for="peer in peerMatrix" :key="peer.index">
-              <rect
-                :x="peer.viewBound.left"
-                :y="peer.viewBound.top"
-                :width="peer.viewBound.width"
-                :height="peer.viewBound.height"
-                fill="var(--ion-color-secondary)"
-              />
-              <path
-                :d="peer.connectedPeerPath()"
-                stroke="rgba(var(--ion-color-tertiary-rgb,0.1))"
-                stroke-width="1"
-              />
-              <!-- <template
-                v-for="(cpeer, index) in peer.connectedPeers.values()"
-                :key="peer.index + '/' + index"
-              >
-                <path
-                  :d="peer.viewBound.p2pPath(cpeer.viewBound)"
-                  stroke="rgba(var(--ion-color-secondary-rgb,0.5))"
-                  stroke-width="1"
-                />
-              </template> -->
-              <!-- <line :x1="peer.viewBound.centerX" :y1="peer.viewBound.centerY" x2="100" y2="20" stroke="black" stroke-width="2"/> -->
-            </template>
-          </svg>
           <canvas class="matrixView" ref="canvas"></canvas>
+          <ion-buttons class="controller-bar">
+            <ion-button
+              v-if="!boardcastReady"
+              fill="outline"
+              @click="prepareBroadcast()"
+            >
+              <ion-icon
+                slot="start"
+                :icon="icon.playSkipForwardCircleOutline"
+              ></ion-icon>
+              准备开始广播
+            </ion-button>
+            <template v-else>
+              <ion-button
+                fill="outline"
+                @click="stepInBroadcast()"
+                :disabled="canStepInBroadcast"
+              >
+                <ion-icon
+                  slot="start"
+                  :icon="icon.playCircleOutline"
+                ></ion-icon>
+                广播步进({{ boardcastStepCount }})
+              </ion-button>
+              <ion-button fill="outline" @click="abortBroadcast()">
+                <ion-icon slot="start" :icon="icon.stopOutline"></ion-icon>
+                停止广播
+              </ion-button>
+              <ion-button
+                fill="outline"
+                v-if="autoBoardcastStepIn"
+                @click="stopAutoBoardcastStepIn()"
+              >
+                <ion-icon
+                  slot="start"
+                  :icon="icon.stopCircleOutline"
+                ></ion-icon>
+                停止自动步进
+              </ion-button>
+              <ion-button
+                v-else
+                fill="outline"
+                @click="startAutoBoardcastStepIn()"
+                :disabled="canStepInBroadcast"
+              >
+                <ion-icon
+                  slot="start"
+                  :icon="icon.playForwardCircleOutline"
+                ></ion-icon>
+                自动步进
+              </ion-button>
+            </template>
+          </ion-buttons>
+        </ion-card-content>
+      </ion-card>
+
+      <ion-card v-show="boardcastLogs.length">
+        <ion-card-header>
+          <ion-card-title>调试日志面板</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <div class="log-panel">
+            <p class="log-item" v-for="item in boardcastLogs" :key="item.time">
+              <span class="log-time">{{ item.time }}</span>
+              <span
+                :class="['log-message', 'log-type-' + item.type]"
+                v-html="item.log"
+              ></span>
+            </p>
+          </div>
         </ion-card-content>
       </ion-card>
     </ion-content>
@@ -139,5 +168,30 @@ export default Home;
 .matrixView {
   width: 100%;
   height: 100%;
+}
+.controller-bar {
+  margin-block-start: 1em;
+  flex-wrap: wrap;
+}
+.controller-bar > * {
+  margin-block-start: 0.3em !important;
+}
+.log-panel {
+  max-height: 20em;
+  overflow: auto;
+}
+.log-item {
+  font-size: 12px;
+  font-weight: lighter;
+}
+.log-time {
+  color: #9e9e9e;
+  padding-inline-end: 0.5em;
+}
+.log-type-success {
+  color: #4caf50;
+}
+.log-type-info {
+  color: #2196f3;
 }
 </style>
