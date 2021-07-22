@@ -4,15 +4,17 @@ import { OutlineFilter } from "@pixi/filter-outline";
 import { bindThis, cacheGetter } from "@bfchain/util-decorator";
 import { ViewPeer } from "./Home";
 import { IndexedTokenMap } from "./IndexedTokenMap";
-import { BroadcastMatrix as RippleBroadcastMatrix } from "@/matrix/ripple.mb";
-import { BroadcastMatrix as LinearBroadcastMatrix } from "@/matrix/linear.mb";
+import { RippleBroadcastMatrix } from "@/matrix/ripple.mb";
+import { LinearBroadcastMatrix } from "@/matrix/linear.mb";
 import { Point } from "@/matrix/Point";
 import { ClassList } from "./ClassList";
 import { countClassNamePrefix } from "./const";
+import { RandomBroadcastMatrix } from "@/matrix/random.mb";
 
 export enum MATRIX_TYPE {
   Linear = "线性广播",
   Ripple = "涟漪广播",
+  Random = "随机广播",
 }
 
 export class PeerContainer extends PIXI.Container {
@@ -319,6 +321,9 @@ export class PeerContainer extends PIXI.Container {
           break;
         case MATRIX_TYPE.Linear:
           this.matrix = new LinearBroadcastMatrix(this.toPoint());
+          break;
+        case MATRIX_TYPE.Random:
+          this.matrix = new RandomBroadcastMatrix(this.toPoint());
           break;
       }
       for (const [cindex] of this.peer.connectedPeers) {

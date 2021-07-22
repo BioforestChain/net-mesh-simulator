@@ -1,27 +1,12 @@
 import "./@types";
 import { Evt } from "./evt";
 import { Point } from "./Point";
-import { BaseMatrixBroadcast } from "./mb";
-export class BroadcastMatrix implements BM.BroadcastMatrix<Point> {
-  public readonly connectedPoints = new Map<bigint, Point>();
-  constructor(public readonly currentPoint: Point) {}
-  addConntectedPoint(cpoint: Point) {
-    const bi = cpoint.toBigInt();
-    if (this.connectedPoints.has(bi)) {
-      return false;
-    }
-    this.connectedPoints.set(bi, cpoint);
-    return true;
-  }
+import { BaseBroadcastMatrix, BaseMatrixBroadcast } from "./mb";
 
-  /**
-   * 开始一个广播任务
-   * @param targetPoint 方向目标
-   */
-  startMartixBroadcast(startPoint: Point, endPoint: Point, data: string) {
-    return new MatrixBroadcast(this, startPoint, endPoint, data);
-  }
-  //   removeConntectedPoint(cpoint:)
+export class RippleBroadcastMatrix extends BaseBroadcastMatrix<
+  MatrixBroadcast
+> {
+  readonly MB_CTOR = MatrixBroadcast;
 }
 
 type PointDetail = {
@@ -38,7 +23,9 @@ type MinPointDetail = {
   minAngle: number;
 };
 
-export class MatrixBroadcast extends BaseMatrixBroadcast<BroadcastMatrix> {
+export class MatrixBroadcast extends BaseMatrixBroadcast<
+  RippleBroadcastMatrix
+> {
   protected _init() {
     const gridSize = 4;
     const { currentPoint, endPoint } = this;
