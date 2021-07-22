@@ -43,8 +43,9 @@ import { MATRIX_TYPE } from "./matrixBuilder";
 
 type $MatrixGenerateOptions = {
   edgeSize: number;
-  maxConnectRate: number;
-  minConnectRate: number;
+  maxConnectRate: number | string;
+  minConnectRate: number | string;
+  boardcastMatrixType: MATRIX_TYPE;
 };
 const BUILDIN_MATRIX_GENERATE_OPTIONS_LIST = [
   {
@@ -53,17 +54,11 @@ const BUILDIN_MATRIX_GENERATE_OPTIONS_LIST = [
       edgeSize: 15,
       maxConnectRate: 50,
       minConnectRate: 10,
-    } as $MatrixGenerateOptions,
-  },
-  {
-    label: "Default",
-    options: {
-      edgeSize: 20,
-      maxConnectRate: 5,
-      minConnectRate: 2,
+      boardcastMatrixType: MATRIX_TYPE.Linear,
     } as $MatrixGenerateOptions,
   },
 ];
+
 export class ViewPeer {
   constructor(
     readonly index: number,
@@ -169,7 +164,8 @@ export default defineComponent({
       title: "矩阵广播效率指标模拟器",
       matrixGenOptions: {
         ...BUILDIN_MATRIX_GENERATE_OPTIONS_LIST[0].options,
-      },
+        ...JSON.parse(localStorage.getItem("matrixGenOptions") || "{}"),
+      } as $MatrixGenerateOptions,
       peerMatrix: [] as ViewPeer[],
       canvasViewBox: {
         width: 1000,
@@ -179,7 +175,6 @@ export default defineComponent({
         generateNetMesh: false,
         stepInBroadcast: false,
       },
-      boardcastMatrixType: MATRIX_TYPE.Linear,
       allBoardcastMatrixType: Object.entries(MATRIX_TYPE),
       boardcastReady: false,
       boardcastStepCount: 0,
@@ -199,6 +194,16 @@ export default defineComponent({
   },
   created() {
     Reflect.set(self, "ii", this);
+    this.$watch(
+      "matrixGenOptions",
+      () => {
+        const matrixGenOptionsJson = JSON.stringify(this.matrixGenOptions);
+        localStorage.setItem("matrixGenOptions", matrixGenOptionsJson);
+        return matrixGenOptionsJson;
+      },
+      { deep: true }
+    );
+
     this.generateNetMesh();
   },
   mounted() {
@@ -282,10 +287,10 @@ export default defineComponent({
       /// 节点互联
       {
         const MAX_CONNECT_COUNT = Math.ceil(
-          (options.maxConnectRate / 100) * (peerMatrix.length - 1)
+          (+options.maxConnectRate / 100) * (peerMatrix.length - 1)
         );
         const MIN_CONNECT_COUNT = Math.floor(
-          (options.minConnectRate / 100) * (peerMatrix.length - 1)
+          (+options.minConnectRate / 100) * (peerMatrix.length - 1)
         );
 
         for (let i = 0; i < peerMatrix.length; ++i) {
@@ -510,7 +515,7 @@ export default defineComponent({
         startPc,
         endPc,
         data,
-        this.$data.boardcastMatrixType
+        this.matrixGenOptions.boardcastMatrixType
       );
       startPc.toPoint().onData.emit(data);
 
@@ -553,14 +558,12 @@ export default defineComponent({
         alert("还未准备开始广播");
         return;
       }
-      const { boardcastMatrixType } = this;
+      const { boardcastMatrixType } = this.matrixGenOptions;
       const { currentBoardcastTask, canvasCtrl } = logicData;
       const { boardcastMap, finishedPc, startPc, endPc } = currentBoardcastTask;
       const { allPc, debugView } = canvasCtrl;
 
-      const debug = false;
       const STEP = ++this.$data.boardcastStepCount;
-      debug && console.group(`第${STEP}步`);
       let size = boardcastMap.size;
       debugView.clear();
       let i = 0;
@@ -574,18 +577,17 @@ export default defineComponent({
           finishedPc.add(fromPc);
           continue;
         }
+        /// 收到消息
+        toPoint.onData.emit(fromBoardcast.data);
+
+        /// 绘制信息传播路径线
         const toPc = allPc[toPoint.toNumber()];
-
-        debug &&
-          console.log(
-            `${fromPoint.toReadableString()} => ${toPoint.toReadableString()}`
-          );
-
         debugView.drawAniDashedLine(
           fromPc.peer.viewBound.centerXY,
           toPc.peer.viewBound.centerXY
         );
 
+        /// 缓存
         let toBoardcast = boardcastMap.get(toPc);
         if (!toBoardcast) {
           toBoardcast = await toPc.doBoardcast(
@@ -596,12 +598,12 @@ export default defineComponent({
           );
           boardcastMap.set(toPc, toBoardcast);
         }
-        toPoint.onData.emit(fromBoardcast.data);
         toBoardcast.resolvePoint(fromPoint);
+
         this.$data.boardcastCount++;
         i++;
         /// 因为一直又新的节点进入到广播列表中,所以这里根据原有数量来限制新节点不要进入这个循环
-        if (--size === 0) {
+        if (--size === 0 || boardcastMap.size === allPc.length) {
           break;
         }
       }
@@ -619,14 +621,14 @@ export default defineComponent({
           minConnectRate,
           maxConnectRate,
         } = this.matrixGenOptions;
-        prefix = `在(${edgeSize}✖${edgeSize})的矩阵中，节点拥有${minConnectRate.toFixed(
+        prefix = `在(${edgeSize}✖${edgeSize})的矩阵中，节点拥有${(+minConnectRate).toFixed(
           2
-        )}%~${maxConnectRate.toFixed(
+        )}%~${(+maxConnectRate).toFixed(
           2
         )}%的节点覆盖率，使用[${boardcastMatrixType}]，`;
       }
       this.appendBoardcastLogs(
-        `使用了${STEP}步，${prefix}达成${(progress * 100).toFixed(
+        `${prefix}使用了${STEP}步，达成${(progress * 100).toFixed(
           2
         )}%的覆盖率，效率：${(
           (boardcastMap.size / this.$data.boardcastCount) *
@@ -634,8 +636,6 @@ export default defineComponent({
         ).toFixed(2)}%`,
         boardcastDone ? "success" : "info"
       );
-
-      debug && console.groupEnd();
     },
     startAutoBoardcastStepIn() {
       this.autoBoardcastStepIn = true;

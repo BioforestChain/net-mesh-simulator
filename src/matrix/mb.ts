@@ -57,12 +57,16 @@ export abstract class BaseMatrixBroadcast<
   }
   protected _resolvedPointIds = new Set<bigint>();
   resolvePoint(point: Point) {
-    this._resolvedPointIds.add(point.toBigInt());
+    const pointId = point.toBigInt();
+    this._resolvedPointIds.add(pointId);
+    this._rejectedPointIds.delete(pointId);
     return true;
   }
   protected _rejectedPointIds = new Set<bigint>();
   rejectPoint(point: Point) {
-    this._rejectedPointIds.add(point.toBigInt());
+    const pointId = point.toBigInt();
+    this._rejectedPointIds.add(pointId);
+    this._resolvedPointIds.delete(pointId);
     return true;
   }
 
