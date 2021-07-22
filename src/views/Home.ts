@@ -28,11 +28,7 @@ import * as PIXI from "pixi.js";
 import { Layer, Group, Stage } from "@pixi/layers";
 import * as convert from "color-convert";
 import * as colorString from "color-string";
-import {
-  MATRIX_TYPE,
-  PeerContainer,
-  PeerContainerArray,
-} from "./PeerContainer";
+import { PeerContainer, PeerContainerArray } from "./PeerContainer";
 import { countClassNamePrefix } from "./const";
 import { DebugView } from "./DebugView";
 import { Point } from "@/matrix/Point";
@@ -43,6 +39,7 @@ import {
   stopCircleOutline,
   playForwardCircleOutline,
 } from "ionicons/icons";
+import { MATRIX_TYPE } from "./matrixBuilder";
 
 type $MatrixGenerateOptions = {
   edgeSize: number;
