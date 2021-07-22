@@ -46,7 +46,7 @@
                   </ion-item>
                 </ion-col>
                 <ion-col size="12">
-                  <ion-balel>互连率</ion-balel>
+                  <ion-label>互连率</ion-label>
                   <ion-row>
                     <ion-col size-lg="6">
                       <ion-item>
@@ -84,9 +84,15 @@
                 </ion-col>
               </ion-row>
 
-              <ion-button @click="generateNetMeshAndReander()"
-                >生成/重置网络</ion-button
+              <ion-button
+                @click="generateNetMeshAndReander()"
+                :disabled="waitting.generateNetMesh"
               >
+                <ion-spinner v-if="waitting.generateNetMesh"> </ion-spinner>
+                <template v-else>
+                  生成/重置网络
+                </template>
+              </ion-button>
             </ion-card-content>
           </ion-grid>
         </ion-card>

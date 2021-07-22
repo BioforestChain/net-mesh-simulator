@@ -21,6 +21,7 @@ import {
   IonSelect,
   IonSelectOption,
   alertController,
+  IonSpinner,
 } from "@ionic/vue";
 import { defineComponent } from "vue";
 import * as PIXI from "pixi.js";
@@ -111,22 +112,6 @@ class ViewBound {
   }
 }
 
-/**洗牌算法
- * @param chaos 混乱系数N意味着洗牌N次
- */
-function randomArray<T>(arr: T[], chaos = Math.sqrt(arr.length)) {
-  const len = arr.length;
-  for (let i = 0; i < chaos; ++i) {
-    const splitIndex = Math.floor(Math.random() * len);
-    // 切牌, 等同于 arr.splice(0, 0, ...arr.slice(splitIndex));
-    arr = arr
-      .slice(splitIndex)
-      .reverse()
-      .concat(arr);
-    arr.length = len;
-  }
-  return arr;
-}
 const logicData = {
   canvasCtrl: undefined as
     | {
@@ -169,6 +154,7 @@ export default defineComponent({
     IonCardContent,
     IonSelect,
     IonSelectOption,
+    IonSpinner,
   },
   setup() {
     return {
@@ -192,6 +178,10 @@ export default defineComponent({
         width: 1000,
         height: 1000,
       },
+      waitting: {
+        generateNetMesh: false,
+        stepInBroadcast: false,
+      },
       boardcastMatrixType: MATRIX_TYPE.Linear,
       allBoardcastMatrixType: Object.entries(MATRIX_TYPE),
       boardcastReady: false,
@@ -202,7 +192,11 @@ export default defineComponent({
       autoBoardcastStepIn: false,
       /**可否点击“广播步进”按钮 */
       get canStepInBroadcast() {
-        return this.boardcastDone || this.autoBoardcastStepIn;
+        return (
+          this.boardcastDone ||
+          this.autoBoardcastStepIn ||
+          this.waitting.stepInBroadcast
+        );
       },
     };
   },
@@ -225,7 +219,18 @@ export default defineComponent({
     tryRender();
   },
   methods: {
-    generateNetMesh() {
+    async generateNetMesh() {
+      if (this.waitting.generateNetMesh) {
+        return;
+      }
+      try {
+        this.waitting.generateNetMesh = true;
+        await this._generateNetMesh();
+      } finally {
+        this.waitting.generateNetMesh = false;
+      }
+    },
+    async _generateNetMesh() {
       // 如果现在有在进行广播任务,先进行中断,再重新生成
       this.abortBroadcast();
 
@@ -235,6 +240,18 @@ export default defineComponent({
       /// 构建节点
       {
         const { edgeSize } = options;
+        if (edgeSize * edgeSize > 1000) {
+          if (
+            false ===
+            (await this.confirm(
+              "网络生成警告",
+              `即将模拟${edgeSize *
+                edgeSize}个节点，数量过多，会有性能问题，是否确定`
+            ))
+          ) {
+            return false;
+          }
+        }
         /**view port width */
         const V_W = this.$data.canvasViewBox.width;
         /**view port height */
@@ -310,7 +327,12 @@ export default defineComponent({
             )[0]; //.shift();
             if (!randomPeer) {
               if (peer.connectedPeers.size < MIN_CONNECT_COUNT) {
-                throw new Error("主动连接失败, 连接率达不成~~");
+                // throw new Error("主动连接失败, 连接率达不成~~");
+                this.alert(
+                  "网络生成失败",
+                  "主动连接失败, 连接率达不成。建议调高最大互联率与最小互联率的差距"
+                );
+                return false;
               }
               break;
             }
@@ -322,6 +344,7 @@ export default defineComponent({
       }
       this.$data.peerMatrix = peerMatrix;
       console.log((performance.now() - _st).toFixed(4) + "ms");
+      return true;
     },
     canvasRender(canvas: HTMLCanvasElement) {
       const _st = performance.now();
@@ -430,10 +453,20 @@ export default defineComponent({
         allPc: allPeerContainerList,
         debugView,
       };
+      return new Promise((cb) => requestAnimationFrame(cb));
     },
-    generateNetMeshAndReander() {
-      this.generateNetMesh();
-      this.canvasRender(this.$refs.canvas as HTMLCanvasElement);
+    async generateNetMeshAndReander() {
+      if (this.waitting.generateNetMesh) {
+        return;
+      }
+      try {
+        this.waitting.generateNetMesh = true;
+        if (await this._generateNetMesh()) {
+          await this.canvasRender(this.$refs.canvas as HTMLCanvasElement);
+        }
+      } finally {
+        this.waitting.generateNetMesh = false;
+      }
     },
     async alert(title: string, message: string) {
       const alert = await alertController.create({
@@ -443,6 +476,21 @@ export default defineComponent({
         buttons: ["确定"],
       });
       await alert.present();
+    },
+    async confirm(title: string, message: string) {
+      const alert = await alertController.create({
+        header: title,
+        // subHeader: 'Subtitle',
+        message: message,
+        buttons: [
+          { text: "取消", role: "cancel" },
+          { text: "确定", role: "ok" },
+        ],
+      });
+      await alert.present();
+      return alert.onDidDismiss().then((value) => {
+        return value.role === "ok";
+      });
     },
     async prepareBroadcast() {
       const alert = (message: string) =>
@@ -494,6 +542,14 @@ export default defineComponent({
       }
     },
     async stepInBroadcast() {
+      try {
+        this.waitting.stepInBroadcast = true;
+        await this._stepInBroadcast();
+      } finally {
+        this.waitting.stepInBroadcast = false;
+      }
+    },
+    async _stepInBroadcast() {
       const alert = (message: string) =>
         this.alert("广播步进出现异常", message);
       if (!logicData.canvasCtrl || !logicData.currentBoardcastTask) {
