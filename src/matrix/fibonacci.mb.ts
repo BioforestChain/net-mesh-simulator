@@ -17,8 +17,13 @@ interface PointDetail {
 export class MatrixBroadcast extends BaseMatrixBroadcast<
   FibonacciBroadcastMatrix
 > {
+  private _MAX_FIB_VALUE = this.currentPoint.edgeSize ** 2;
   private getFibValue(point: Point) {
-    return point.toNumber() + 1;
+    let baseVal = point.toNumber() - this.startPoint.toNumber();
+    if (baseVal < 0) {
+      baseVal += this._MAX_FIB_VALUE;
+    }
+    return baseVal + 1;
   }
   protected _init() {
     // 排序所有节点，包括自己
@@ -48,10 +53,9 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<
     }
 
     /// 接下来，自己要成为接下来广播要参与的节点之一，根据不重叠的规律，来进行广播
-    const MAX_FIB_VALUE = this.currentPoint.edgeSize ** 2;
     const LoopValue = (fibVal: number) => {
-      if (fibVal > MAX_FIB_VALUE) {
-        fibVal = ((fibVal - 1) % MAX_FIB_VALUE) + 1;
+      if (fibVal > this._MAX_FIB_VALUE) {
+        fibVal = ((fibVal - 1) % this._MAX_FIB_VALUE) + 1;
       }
       return fibVal;
     };
