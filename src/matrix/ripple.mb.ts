@@ -126,71 +126,30 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<
       ])
     );
 
-    this._bc = this.doBroadcast(this.todoTasks);
+    return this.doBroadcast(this.todoTasks);
   }
   private allPointDetailMap!: ReadonlyMap<bigint, PointDetail>;
   private allMinPointDetailMap!: ReadonlyMap<number, MinPointDetail>;
   private todoTasks!: ReadonlyMap<MinPointDetail, ReadonlySet<PointDetail>>;
-  private resolvedPointIds = new Map<number, Set<bigint>>();
-  private _hasResolved(pointDetail: PointDetail) {
-    const pointDetails = this.resolvedPointIds.get(pointDetail.minPointId);
-    if (pointDetails) {
-      return pointDetails.has(pointDetail.pointId);
-    }
-    return false;
+  private _resolvedMinPointIds = new Set<number>();
+  hasResolvedMinPointId(minPointId: number) {
+    return this._resolvedMinPointIds.has(minPointId);
   }
-  private rejectedPointIds = new Set<bigint>();
+  // overwrite
   resolvePoint(point: Point) {
-    const pointDetail = this._getPointDetailByPointId(point.toBigInt());
+    const pointDetail = this.allPointDetailMap.get(point.toBigInt());
     if (!pointDetail) {
       return false;
     }
-    let pointDetails = this.resolvedPointIds.get(pointDetail.minPointId);
-    if (!pointDetails) {
-      pointDetails = new Set();
-      this.resolvedPointIds.set(pointDetail.minPointId, pointDetails);
-    }
-    pointDetails.add(pointDetail.pointId);
-
-    // const pointId = point.toBigInt();
-    // const detail = this.allPointDetailMap.get(pointId);
-    // if (!detail) {
-    //   return false;
-    // }
-    // const cellPoints = this.todoTasks.get(detail.minPointId);
-    // if (!cellPoints) {
-    //   return false;
-    // }
-    // return cellPoints.delete(pointId);
-    return true;
-  }
-  rejectPoint(point: Point) {
-    this.rejectedPointIds.add(point.toBigInt());
-    return true;
-    // const pointId = point.toBigInt();
-    // const detail = this.allPointDetailMap.get(pointId);
-    // if (!detail) {
-    //   return false;
-    // }
-    // const cellPoints = this.todoTasks.get(detail.minPointId);
-    // if (!cellPoints) {
-    //   return false;
-    // }
-    // if (cellPoints.has(pointId)) {
-    //   return false;
-    // }
-    // cellPoints.add(pointId);
-    // return true;
-  }
-  private _getPointDetailByPointId(pointId: bigint) {
-    return this.allPointDetailMap.get(pointId);
-  }
-  private _getMinPointByMinPointId(minPointId: number) {
-    return this.allMinPointDetailMap.get(minPointId);
+    this._resolvedMinPointIds.add(pointDetail.minPointId);
+    return super.resolvePoint(point);
   }
 
   readonly onSkipMinPointId = new Evt<number>();
   private _level = 1;
+  get currentLevel() {
+    return this._level;
+  }
   async *doBroadcast(
     allTasks: ReadonlyMap<MinPointDetail, ReadonlySet<PointDetail>>
   ) {
@@ -210,7 +169,7 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<
           }
         }
         for (const pointDetail of sortedPointDetails) {
-          if (this._hasResolved(pointDetail)) {
+          if (this.hasResolvedMinPointId(pointDetail.minPointId)) {
             /// 如果已经收到这个格子的广播，那么跳过距离小于等于且方向大于等于这个格子的其它格子
             skipedMinPointDetail = minPointDetail;
             this.onSkipMinPointId.emit(minPointDetail.minPointId);
@@ -228,21 +187,13 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<
           if (finishedPds.has(pointDetail)) {
             continue;
           }
-          if (this._hasResolved(pointDetail)) {
+          if (this.hasResolvedPoint(pointDetail.point)) {
             continue;
           }
           yield pointDetail.point;
           finishedPds.add(pointDetail);
         }
       }
-    } while (this.rejectedPointIds.size > 0);
-  }
-  private _bc!: AsyncGenerator<Point>;
-  async getNextPoint() {
-    const item = await this._bc.next();
-    if (item.done) {
-      return;
-    }
-    return item.value;
+    } while (this._rejectedPointIds.size > 0);
   }
 }

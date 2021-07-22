@@ -36,39 +36,17 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<
       Math.sqrt(this._martix.connectedPoints.size) * 2
     );
 
-    this._bc = this.doBroadcast(allPointList);
-  }
-  private _hasResolved(point: Point) {
-    return this.resolvedPointIds.has(point.toBigInt());
-  }
-  private resolvedPointIds = new Set<bigint>();
-  resolvePoint(point: Point) {
-    this.resolvedPointIds.add(point.toBigInt());
-    return true;
-  }
-  private rejectedPointIds = new Set<bigint>();
-  rejectPoint(point: Point) {
-    this.rejectedPointIds.add(point.toBigInt());
-    return true;
+    return this.doBroadcast(allPointList);
   }
 
-  readonly onSkipMinPointId = new Evt<number>();
   async *doBroadcast(allPointList: Array<Point>) {
     do {
       for (const point of allPointList) {
-        if (this._hasResolved(point)) {
+        if (this.hasResolvedPoint(point)) {
           continue;
         }
         yield point;
       }
-    } while (this.rejectedPointIds.size > 0);
-  }
-  private _bc!: AsyncGenerator<Point>;
-  async getNextPoint() {
-    const item = await this._bc.next();
-    if (item.done) {
-      return;
-    }
-    return item.value;
+    } while (this._rejectedPointIds.size > 0);
   }
 }

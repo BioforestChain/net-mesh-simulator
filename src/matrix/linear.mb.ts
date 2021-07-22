@@ -42,40 +42,18 @@ export class MatrixBroadcast extends BaseMatrixBroadcast<
 
     this.allPointDetailList = allPointDetailList;
 
-    this._bc = this.doBroadcast(allPointDetailList);
+    return this.doBroadcast(allPointDetailList);
   }
-  private allPointDetailList!: Array<PointDetail>;
-  private _hasResolved(pointDetail: PointDetail) {
-    return this.resolvedPointIds.has(pointDetail.value);
-  }
-  private resolvedPointIds = new Set<bigint>();
-  resolvePoint(point: Point) {
-    this.resolvedPointIds.add(point.toBigInt());
-    return true;
-  }
-  private rejectedPointIds = new Set<bigint>();
-  rejectPoint(point: Point) {
-    this.rejectedPointIds.add(point.toBigInt());
-    return true;
-  }
+  public allPointDetailList!: Array<PointDetail>;
 
-  readonly onSkipMinPointId = new Evt<number>();
   async *doBroadcast(sortedAllPointDetailList: Array<PointDetail>) {
     do {
       for (const pointDetail of sortedAllPointDetailList) {
-        if (this._hasResolved(pointDetail)) {
+        if (this.hasResolvedPoint(pointDetail.point)) {
           continue;
         }
         yield pointDetail.point;
       }
-    } while (this.rejectedPointIds.size > 0);
-  }
-  private _bc!: AsyncGenerator<Point>;
-  async getNextPoint() {
-    const item = await this._bc.next();
-    if (item.done) {
-      return;
-    }
-    return item.value;
+    } while (this._rejectedPointIds.size > 0);
   }
 }
