@@ -18,20 +18,24 @@
             </ion-card-header>
             <ion-card-content>
               <ion-row>
-                <ion-col size="12" size-sm>
+                <ion-col size="12" size-lg="6">
                   <ion-item>
                     <ion-label position="fixed">矩阵大小</ion-label>
                     <ion-input
+                      class="text-right"
                       type="number"
                       v-model="matrixGenOptions.edgeSize"
                     >
                     </ion-input>
+                    <span class="end-tip" slot="end"
+                      >✖ {{ matrixGenOptions.edgeSize }}</span
+                    >
                   </ion-item>
                 </ion-col>
-                <ion-col size="12" size-sm>
+                <ion-col size="12" size-lg="6">
                   <ion-item>
                     <ion-label position="fixed">广播方式</ion-label>
-                    <ion-select v-model="boardcastMatrixType">
+                    <ion-select slot="end" v-model="boardcastMatrixType">
                       <ion-select-option
                         v-for="bmitem in allBoardcastMatrixType"
                         :key="bmitem[0]"
@@ -41,33 +45,42 @@
                     </ion-select>
                   </ion-item>
                 </ion-col>
-                <ion-col size="12" size-sm>
-                  <ion-item>
-                    <ion-label position="fixed">最大互连率</ion-label>
-                    <ion-input
-                      class="text-right"
-                      type="number"
-                      inputmode="decimal"
-                      max="100"
-                      step="0.1"
-                      min="1"
-                      v-model="matrixGenOptions.maxConnectRate"
-                    ></ion-input>
-                    <span slot="end">%</span>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label position="fixed">最小互连率</ion-label>
-                    <ion-input
-                      class="text-right"
-                      type="number"
-                      inputmode="decimal"
-                      max="100"
-                      step="0.1"
-                      min="1"
-                      v-model="matrixGenOptions.minConnectRate"
-                    ></ion-input>
-                    <span slot="end">%</span>
-                  </ion-item>
+                <ion-col size="12">
+                  <ion-balel>互连率</ion-balel>
+                  <ion-row>
+                    <ion-col size-lg="6">
+                      <ion-item>
+                        <ion-label position="fixed">最大</ion-label>
+                        <ion-input
+                          class="text-right"
+                          slot="end"
+                          type="number"
+                          inputmode="decimal"
+                          max="100"
+                          step="0.1"
+                          min="1"
+                          v-model="matrixGenOptions.maxConnectRate"
+                        ></ion-input>
+                        <span slot="end">%</span>
+                      </ion-item>
+                    </ion-col>
+                    <ion-col size-lg="6">
+                      <ion-item>
+                        <ion-label position="fixed">最小</ion-label>
+                        <ion-input
+                          class="text-right"
+                          slot="end"
+                          type="number"
+                          inputmode="decimal"
+                          max="100"
+                          step="0.1"
+                          min="1"
+                          v-model="matrixGenOptions.minConnectRate"
+                        ></ion-input>
+                        <span slot="end">%</span>
+                      </ion-item>
+                    </ion-col>
+                  </ion-row>
                 </ion-col>
               </ion-row>
 
@@ -203,6 +216,9 @@ export default Home;
 
 .ion-border-style-none {
   --border-style: none;
+}
+.end-tip {
+  color: #9e9e9e;
 }
 .matrixView {
   width: 100%;

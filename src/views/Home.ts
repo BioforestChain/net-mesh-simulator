@@ -485,7 +485,7 @@ export default defineComponent({
     },
     appendBoardcastLogs(log: string, type = "info") {
       this.boardcastLogs.unshift({
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toTimeString().split(" ", 1)[0],
         type,
         log,
       });
