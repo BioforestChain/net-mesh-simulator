@@ -35,7 +35,10 @@
                 <ion-col size="12" size-lg="6">
                   <ion-item>
                     <ion-label position="fixed">广播方式</ion-label>
-                    <ion-select slot="end" v-model="matrixGenOptions.boardcastMatrixType">
+                    <ion-select
+                      slot="end"
+                      v-model="matrixGenOptions.boardcastMatrixType"
+                    >
                       <ion-select-option
                         v-for="bmitem in allBoardcastMatrixType"
                         :key="bmitem[0]"
@@ -165,11 +168,7 @@
           </ion-card-header>
           <ion-card-content>
             <div class="log-panel">
-              <p
-                class="log-item"
-                v-for="item in boardcastLogs"
-                :key="item.time"
-              >
+              <p class="log-item" v-for="item in boardcastLogs" :key="item.uid">
                 <span class="log-time">{{ item.time }}</span>
                 <span
                   :class="['log-message', 'log-type-' + item.type]"

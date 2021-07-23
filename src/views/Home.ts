@@ -104,23 +104,20 @@ class ViewBound {
   }
 }
 
-const logicData = {
-  canvasCtrl: undefined as
-    | {
-        allPc: PeerContainerArray;
-        debugView: DebugView;
-      }
-    | undefined,
-  currentBoardcastTask: undefined as
-    | {
-        boardcastMap: Map<PeerContainer, BM.MatrixBroadcast<Point>>;
-        startPc: PeerContainer;
-        endPc: PeerContainer;
-        finishedPc: Set<PeerContainer>;
-        stepCount: number;
-      }
-    | undefined,
-};
+class LogicData {
+  readonly id = Math.random();
+  canvasCtrl?: {
+    allPc: PeerContainerArray;
+    debugView: DebugView;
+  };
+  currentBoardcastTask?: {
+    boardcastMap: Map<PeerContainer, BM.MatrixBroadcast<Point>>;
+    startPc: PeerContainer;
+    endPc: PeerContainer;
+    finishedPc: Set<PeerContainer>;
+    stepCount: number;
+  };
+}
 
 export default defineComponent({
   name: "Home",
@@ -157,6 +154,8 @@ export default defineComponent({
         stopCircleOutline,
         playForwardCircleOutline,
       },
+      logicData: new LogicData(),
+      log_uid: 0,
     };
   },
   data() {
@@ -179,7 +178,12 @@ export default defineComponent({
       boardcastReady: false,
       boardcastStepCount: 0,
       boardcastCount: 1, /// 广播次数，包括起点，所以默认是1
-      boardcastLogs: [] as { time: string; type: string; log: string }[],
+      boardcastLogs: [] as {
+        uid: number;
+        time: string;
+        type: string;
+        log: string;
+      }[],
       boardcastDone: false,
       autoBoardcastStepIn: false,
       /**可否点击“广播步进”按钮 */
@@ -360,6 +364,7 @@ export default defineComponent({
         backgroundAlpha: 0,
         antialias: true,
       });
+      app.ticker.maxFPS = 30;
       const oldApp = Reflect.get(self, "app");
       if (oldApp instanceof PIXI.Application) {
         oldApp.destroy();
@@ -451,7 +456,7 @@ export default defineComponent({
         (performance.now() - _st).toFixed(4) + "ms"
       );
 
-      logicData.canvasCtrl = {
+      this.logicData.canvasCtrl = {
         allPc: allPeerContainerList,
         debugView,
       };
@@ -497,6 +502,7 @@ export default defineComponent({
     async prepareBroadcast() {
       const alert = (message: string) =>
         this.alert("准备广播出现异常", message);
+      const { logicData } = this;
       if (!logicData.canvasCtrl) {
         alert("等待初始化……");
         return;
@@ -535,6 +541,7 @@ export default defineComponent({
     },
     appendBoardcastLogs(log: string, type = "info") {
       this.boardcastLogs.unshift({
+        uid: this.log_uid++,
         time: new Date().toTimeString().split(" ", 1)[0],
         type,
         log,
@@ -554,6 +561,7 @@ export default defineComponent({
     async _stepInBroadcast() {
       const alert = (message: string) =>
         this.alert("广播步进出现异常", message);
+      const { logicData } = this;
       if (!logicData.canvasCtrl || !logicData.currentBoardcastTask) {
         alert("还未准备开始广播");
         return;
@@ -566,7 +574,7 @@ export default defineComponent({
       const STEP = ++this.$data.boardcastStepCount;
       let size = boardcastMap.size;
       debugView.clear();
-      let i = 0;
+      let loopCount = 0;
       for (const [fromPc, fromBoardcast] of boardcastMap) {
         if (finishedPc.has(fromPc)) {
           continue;
@@ -600,16 +608,18 @@ export default defineComponent({
         }
         toBoardcast.resolvePoint(fromPoint);
 
-        this.$data.boardcastCount++;
-        i++;
+        if (boardcastMap.size !== allPc.length) {
+          this.$data.boardcastCount++;
+          loopCount++;
+        }
         /// 因为一直又新的节点进入到广播列表中,所以这里根据原有数量来限制新节点不要进入这个循环
-        if (--size === 0 || boardcastMap.size === allPc.length) {
+        if (--size === 0) {
           break;
         }
       }
 
       let boardcastDone = false;
-      if (boardcastMap.size === allPc.length || i === 0) {
+      if (boardcastMap.size === allPc.length || loopCount === 0) {
         boardcastDone = this.$data.boardcastDone = true;
       }
 
@@ -653,6 +663,7 @@ export default defineComponent({
       this.autoBoardcastStepIn = false;
     },
     abortBroadcast() {
+      const { logicData } = this;
       if (!logicData.canvasCtrl) {
         return;
       }

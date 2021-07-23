@@ -1,4 +1,27 @@
 import * as PIXI from "pixi.js";
+
+interface Color {
+  color: number;
+  alpah: number;
+}
+interface StopColor extends Color {
+  start: number;
+  stop: number;
+}
+const DASHED_COLORS: StopColor[] = [
+  //   {
+  //     color: 0xffffff,
+  //     alpah: 1,
+  //     start: 0,
+  //     stop: 0.5,
+  //   },
+  {
+    color: 0x0,
+    alpah: 1,
+    start: 0,
+    stop: 0.5,
+  },
+];
 export class DebugView extends PIXI.Container {
   //   private aniTicker = new PIXI.Ticker();
   private get aniTicker() {
@@ -10,10 +33,26 @@ export class DebugView extends PIXI.Container {
     this.addChild(this._aniDashLineView);
 
     const { aniTicker } = this;
+
+    let accT = 0;
+    const ACC_T = 60 / 5; // 一秒更新5帧率
     aniTicker.add((t) => {
+      accT += t;
+      if (accT > ACC_T) {
+        const restAccT = accT % ACC_T;
+        t = accT - restAccT;
+        accT = restAccT;
+      } else if (this._needForceRender) {
+        this._needForceRender = false;
+        // t = accT;
+        t = 0;
+        accT = 0;
+      } else {
+        return;
+      }
       if (this._aniFuns.length) {
         // const st = performance.now();
-        this._aniDashLineView.clear();
+        this.__aniViewClear();
         for (const aniFun of this._aniFuns) {
           aniFun(t);
         }
@@ -33,6 +72,20 @@ export class DebugView extends PIXI.Container {
   public unitDashedSpeed = 0.01; // %/ms
   private _aniFuns: PIXI.TickerCallback<any>[] = [];
   private _aniDashLineView = new PIXI.Graphics();
+  private _preUsedColor?: Color;
+  private _useColor(color: Color) {
+    if (this._preUsedColor !== color) {
+      this._preUsedColor = color;
+    } else {
+      return;
+    }
+    this._aniDashLineView.lineStyle({
+      color: color.color,
+      alpha: color.alpah,
+      width: 1,
+      native: true,
+    });
+  }
   drawAniDashedLine(
     from: readonly [number, number],
     to: readonly [number, number]
@@ -48,37 +101,9 @@ export class DebugView extends PIXI.Container {
     const unitDiffY = (diffY / totalLen) * unitDashedLen;
     let accOffset = 0;
 
-    type StopColor = {
-      color: number;
-      alpah: number;
-      start: number;
-      stop: number;
-    };
-    const DASHED_COLORS: StopColor[] = [
-      //   {
-      //     color: 0xffffff,
-      //     alpah: 1,
-      //     start: 0,
-      //     stop: 0.5,
-      //   },
-      {
-        color: 0x0,
-        alpah: 1,
-        start: 0,
-        stop: 0.5,
-      },
-    ];
-    const useColor = (stopColor: StopColor) => {
-      gView.lineStyle({
-        color: stopColor.color,
-        alpha: stopColor.alpah,
-        width: 1,
-        native: true,
-      });
-    };
     const aniFun: PIXI.TickerCallback<any> = (t) => {
       for (const stopColor of DASHED_COLORS) {
-        useColor(stopColor);
+        this._useColor(stopColor);
         const colorLen = stopColor.stop - stopColor.start;
         let offsetX = fromX;
         let offsetY = fromY;
@@ -108,11 +133,19 @@ export class DebugView extends PIXI.Container {
     };
     this._aniFuns.push(aniFun);
   }
+
+  /**清空后，需要马上进行一次强制渲染，动画什么的可以慢一拍没关系 */
+  private _needForceRender = false;
+  private __aniViewClear() {
+    this._aniDashLineView.clear();
+    this._preUsedColor = undefined;
+  }
   clear() {
     for (const aniFun of this._aniFuns) {
       this.aniTicker.remove(aniFun);
     }
     this._aniFuns.length = 0;
-    return this._aniDashLineView.clear();
+    this._needForceRender = true;
+    return this.__aniViewClear();
   }
 }
